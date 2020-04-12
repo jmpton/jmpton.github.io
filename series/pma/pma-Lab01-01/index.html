@@ -59,12 +59,12 @@
 <p>The malware comes in two parts: a small executable (16 Ko) and a DLL (160 Ko) without export table.<br />
 The malicious <a href="#exe_analysis">EXE</a>:</p>
 <ul>
-  <li><a href="#rebuild_dll">Rebuild</a> the export table of the malicious DLL;</li>
-  <li><a href="#filesystem_alteration">Modify</a> part of the filesystem, so the malicious DLL is loaded when executables from the <em>System32</em> folder are executed;<br />
+  <li><a href="#rebuild_dll">Rebuilds</a> the export table of the malicious DLL;</li>
+  <li><a href="#filesystem_alteration">Modifies</a> part of the filesystem, so the malicious DLL is loaded when executables from the <em>System32</em> folder are executed;<br />
 The malicious <a href="#dll_analysis">DLL</a>:</li>
-  <li><a href="#mutex">Create</a> a mutex;</li>
-  <li><a href="#socket">Open</a> a socket to 127.26.152.13:80 an send a “<em>hello</em>” beacon;</li>
-  <li><a href="#commands">Process</a> received commands.</li>
+  <li><a href="#mutex">Creates</a> a mutex maned “<em>SADFHUHF</em>”;</li>
+  <li><a href="#socket">Opens</a> a socket to 127.26.152.13:80 an send a “<em>hello</em>” beacon;</li>
+  <li><a href="#commands">Processes</a> received commands.</li>
 </ul>
 
 <h2 id="exe_analysis">Analysis of the malicious executable</h2>
@@ -73,66 +73,66 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
 
 <p>A check of the command line is implemented to avoid the accidental execution of the malware. First, <em>argc</em> and <em>argv</em> are passed to the <em>_main()</em> function:</p>
 
-<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004018BF</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">_StartupInfo</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x004018C2</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
-<span class="err">0</span><span class="nf">x004018C3</span>                 <span class="nv">push</span>    <span class="nv">_DoWildCard</span>
-<span class="err">0</span><span class="nf">x004018C9</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">env</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x004018CC</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
-<span class="err">0</span><span class="nf">x004018CD</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x004018D0</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
-<span class="err">0</span><span class="nf">x004018D1</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x004018D4</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
-<span class="err">0</span><span class="nf">x004018D5</span>                 <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">__getmainargs</span>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004018BF</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">_StartupInfo</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018C2</span>    <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018C3</span>    <span class="nv">push</span>    <span class="nv">_DoWildCard</span>
+<span class="err">0</span><span class="nf">x004018C9</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">env</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018CC</span>    <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018CD</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018D0</span>    <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018D1</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018D4</span>    <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018D5</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">__getmainargs</span>
 <span class="err">[</span><span class="nf">...</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x004018F5</span>                 <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">envp</span><span class="p">]</span> 
-<span class="err">0</span><span class="nf">x004018F8</span>                 <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x004018FB</span>                 <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x004018FE</span>                 <span class="nv">call</span>    <span class="nv">_main</span>
+<span class="err">0</span><span class="nf">x004018F5</span>    <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">envp</span><span class="p">]</span> 
+<span class="err">0</span><span class="nf">x004018F8</span>    <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018FB</span>    <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018FE</span>    <span class="nv">call</span>    <span class="nv">_main</span>
 </code></pre></div></div>
 
 <p>Then, within the <em>_main()</em> function, the code checks if the command line has exactly 2 arguments:</p>
 
-<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401440</span>                 <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x00401444</span>                 <span class="nv">sub</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">44h</span>
-<span class="err">0</span><span class="nf">x00401447</span>                 <span class="nv">cmp</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">2</span> <span class="c1">; check</span>
-<span class="err">0</span><span class="nf">x0040144A</span>                 <span class="nv">push</span>    <span class="nb">ebx</span>
-<span class="err">0</span><span class="nf">x0040144B</span>                 <span class="nv">push</span>    <span class="nb">ebp</span>
-<span class="err">0</span><span class="nf">x0040144C</span>                 <span class="nv">push</span>    <span class="nb">esi</span>
-<span class="err">0</span><span class="nf">x0040144D</span>                 <span class="nv">push</span>    <span class="nb">edi</span>
-<span class="err">0</span><span class="nf">x0040144E</span>                 <span class="nv">jnz</span>     <span class="nv">quit</span> <span class="c1">; exit if argc != 2</span>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401440</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401444</span>    <span class="nv">sub</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">44h</span>
+<span class="err">0</span><span class="nf">x00401447</span>    <span class="nv">cmp</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">2</span> <span class="c1">; check</span>
+<span class="err">0</span><span class="nf">x0040144A</span>    <span class="nv">push</span>    <span class="nb">ebx</span>
+<span class="err">0</span><span class="nf">x0040144B</span>    <span class="nv">push</span>    <span class="nb">ebp</span>
+<span class="err">0</span><span class="nf">x0040144C</span>    <span class="nv">push</span>    <span class="nb">esi</span>
+<span class="err">0</span><span class="nf">x0040144D</span>    <span class="nv">push</span>    <span class="nb">edi</span>
+<span class="err">0</span><span class="nf">x0040144E</span>    <span class="nv">jnz</span>     <span class="nv">quit</span> <span class="c1">; exit if argc != 2</span>
 </code></pre></div></div>
 
 <p>Finally, it checks if the second argument matches the string “WARNING_THIS_WILL_DESTROY_YOUR_MACHINE”:</p>
 
-<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401454</span>                 <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x00401458</span>                 <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nv">offset</span> <span class="nv">aWarni</span> <span class="c1">; string</span>
-<span class="err">0</span><span class="nf">x0040145D</span>                 <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span>    <span class="c1">; ptrArg n°2</span>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401454</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401458</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nv">offset</span> <span class="nv">aWarni</span> <span class="c1">; string</span>
+<span class="err">0</span><span class="nf">x0040145D</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span>    <span class="c1">; ptrArg n°2</span>
 <span class="err">0</span><span class="nf">x00401460</span>
 <span class="err">0</span><span class="nf">x00401460</span> <span class="nv">next_char</span><span class="p">:</span>
-<span class="err">0</span><span class="nf">x00401460</span>                 <span class="nv">mov</span>     <span class="nb">dl</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="p">]</span>  <span class="c1">; Arg n°2 (char)</span>
-<span class="err">0</span><span class="nf">x00401462</span>                 <span class="nv">mov</span>     <span class="nb">bl</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="p">]</span>  <span class="c1">; string looked for</span>
-<span class="err">0</span><span class="nf">x00401464</span>                 <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="nb">dl</span>
-<span class="err">0</span><span class="nf">x00401466</span>                 <span class="nv">cmp</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">bl</span> <span class="c1">; check char</span>
-<span class="err">0</span><span class="nf">x00401468</span>                 <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_match</span> <span class="c1">; quit</span>
-<span class="err">0</span><span class="nf">x0040146A</span>                 <span class="nv">test</span>    <span class="nb">cl</span><span class="p">,</span> <span class="nb">cl</span>
-<span class="err">0</span><span class="nf">x0040146C</span>                 <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">got_end_of_string</span>
-<span class="err">0</span><span class="nf">x0040146E</span>                 <span class="nv">mov</span>     <span class="nb">dl</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x00401471</span>                 <span class="nv">mov</span>     <span class="nb">bl</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
-<span class="err">0</span><span class="nf">x00401474</span>                 <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="nb">dl</span>
-<span class="err">0</span><span class="nf">x00401476</span>                 <span class="nv">cmp</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">bl</span>
-<span class="err">0</span><span class="nf">x00401478</span>                 <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_match</span> <span class="c1">; quit</span>
-<span class="err">0</span><span class="nf">x0040147A</span>                 <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">2</span>
-<span class="err">0</span><span class="nf">x0040147D</span>                 <span class="nv">add</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">2</span>
-<span class="err">0</span><span class="nf">x00401480</span>                 <span class="nv">test</span>    <span class="nb">cl</span><span class="p">,</span> <span class="nb">cl</span>
-<span class="err">0</span><span class="nf">x00401482</span>                 <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">next_char</span>
+<span class="err">0</span><span class="nf">x00401460</span>    <span class="nv">mov</span>     <span class="nb">dl</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="p">]</span>  <span class="c1">; Arg n°2 (char)</span>
+<span class="err">0</span><span class="nf">x00401462</span>    <span class="nv">mov</span>     <span class="nb">bl</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="p">]</span>  <span class="c1">; string looked for</span>
+<span class="err">0</span><span class="nf">x00401464</span>    <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="nb">dl</span>
+<span class="err">0</span><span class="nf">x00401466</span>    <span class="nv">cmp</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">bl</span> <span class="c1">; check char</span>
+<span class="err">0</span><span class="nf">x00401468</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_match</span> <span class="c1">; quit</span>
+<span class="err">0</span><span class="nf">x0040146A</span>    <span class="nv">test</span>    <span class="nb">cl</span><span class="p">,</span> <span class="nb">cl</span>
+<span class="err">0</span><span class="nf">x0040146C</span>    <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">got_end_of_string</span>
+<span class="err">0</span><span class="nf">x0040146E</span>    <span class="nv">mov</span>     <span class="nb">dl</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401471</span>    <span class="nv">mov</span>     <span class="nb">bl</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401474</span>    <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="nb">dl</span>
+<span class="err">0</span><span class="nf">x00401476</span>    <span class="nv">cmp</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">bl</span>
+<span class="err">0</span><span class="nf">x00401478</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_match</span> <span class="c1">; quit</span>
+<span class="err">0</span><span class="nf">x0040147A</span>    <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">2</span>
+<span class="err">0</span><span class="nf">x0040147D</span>    <span class="nv">add</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">2</span>
+<span class="err">0</span><span class="nf">x00401480</span>    <span class="nv">test</span>    <span class="nb">cl</span><span class="p">,</span> <span class="nb">cl</span>
+<span class="err">0</span><span class="nf">x00401482</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">next_char</span>
 <span class="err">0</span><span class="nf">x00401484</span> <span class="nv">got_end_of_string</span><span class="p">:</span>     
-<span class="err">0</span><span class="nf">x00401484</span>                 <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span> <span class="c1">; good boy</span>
-<span class="err">0</span><span class="nf">x00401486</span>                 <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
+<span class="err">0</span><span class="nf">x00401484</span>    <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span> <span class="c1">; good boy</span>
+<span class="err">0</span><span class="nf">x00401486</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
 </code></pre></div></div>
 <p>If both strings match, we reach the address <em>0x401484</em>. There, <em>eax</em> is set to zero and then the code jumps to <em>0x40148D</em>. This can be bypassed in many ways. I’ve chosen to patch the conditional <em>jnz</em> of the first check (<em>0x0040144E</em>) with this:</p>
 
-<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040144E</span>                 <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
-<span class="err">0</span><span class="nf">x00401450</span>                 <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040144E</span>    <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x00401450</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
 </code></pre></div></div>
 
 <h3 id="rebuild_dll">Rebuild the malicious DLL</h3>
@@ -188,7 +188,7 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
   </li>
 </ol>
 
-<p>As stated above, the same 3 APIs are used to map the malicious DLL with <em>read write</em> permissions (code not shown for brevity). An important thing to note is we have a 1:1 correspondence between the mapped view and the file on disk, meaning both will be aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">FileAlignment</a> field of the PE. If they were loaded using <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a>, the memory image would have been aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">SectionAlignment</a> field of the PE.<br />
+<p>As stated above, the same 3 APIs are used to map the malicious DLL with <em>read</em> and <em>write</em> permissions (code not shown for brevity). An important thing to note is we have a 1:1 correspondence between the mapped view and the file on disk, meaning both will be aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">FileAlignment</a> field of the PE. If they were loaded using <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a>, the memory image would have been aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">SectionAlignment</a> field of the PE.<br />
 Let’s continue after the second call to <em>MapViewofFile</em> (seen at address <em>0x401525</em>).</p>
 
 <h4 id="rebuild_export_dir">Rebuilding the IMAGE_EXPORT_DIRECTORY</h4>
@@ -482,7 +482,7 @@ At this point, the <strong>IMAGE_EXPORT_DIRECTORY</strong> of the malicious DLL 
 <span class="err">0</span><span class="nf">x004016EA</span>    <span class="nv">rep</span> <span class="nv">movsb</span>
 </code></pre></div></div>
 <p>The use of <em>and ecx, 3</em> followed by <em>rep movsb</em> has been explained <a href="#copy_export_dir">previously</a>.<br />
-Now the first API name (i.e. first entry of the <strong>ExportNameTable</strong>) has been copied, it’s corresponding RVA has to be set in the <strong>ExportNamePointerTable</strong>:</p>
+Now the first API name (i.e. first entry of the <strong>ExportNameTable</strong>) has been copied, its corresponding RVA has to be set in the <strong>ExportNamePointerTable</strong>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebp-&gt;ExportAddressTable</span>
 <span class="c1">; eax = size of ExportAddressTable</span>
 <span class="c1">; ebx-&gt;ExportNameTable (copied API name)</span>
@@ -607,7 +607,7 @@ If the call returns a file, the last 4 chars of its filename are compared with t
 <p>A refresher on <strong>import table</strong> is available <a href="/cheatsheets/pe/#import_table">here</a>.<br />
 When a valid target is found, the function <em>HijackImportTable()</em> is called. It starts by mapping a view of the target file in memory with <em>read</em> and <em>write</em> permissions. This is similar to what we have seen with <a href="#memory_mapping_1">earlier mappings of DLLs</a>.<br />
 Then, the <strong>PE signature</strong> of the target is checked:</p>
-<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nf">esi</span><span class="o">-&gt;</span><span class="nv">mapped</span> <span class="nv">file</span>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; esi-&gt;mapped file</span>
 <span class="err">004010</span><span class="nf">FA</span>    <span class="nv">mov</span>     <span class="nb">ebp</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="mh">3Ch</span><span class="p">]</span>
 <span class="err">[</span><span class="nf">...</span><span class="p">]</span>
 <span class="err">00401112</span>    <span class="nf">cmp</span>     <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">0</span><span class="p">],</span> <span class="s">'EP'</span>
@@ -661,7 +661,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 <span class="err">0</span><span class="nf">x0040119A</span>    <span class="nv">and</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">3</span>
 <span class="err">0</span><span class="nf">x0040119D</span>    <span class="nv">rep</span> <span class="nv">movsb</span> <span class="c1">; copy remaining bytes</span>
 </code></pre></div></div>
-<p>And that’s it, now <strong>IMAGE_IMPORT_DESCRIPTOR.NameRVA</strong> will be the RVA of the malicious DLL name, the DLL that has been copied in the <em>C:\Windows\System32</em> folder. Next time one of the compromised executable in <em>C:\Windows\System32\</em> is executed, the malicious DLL will be loaded.</p>
+<p>And that’s it, now <strong>IMAGE_IMPORT_DESCRIPTOR.NameRVA</strong> will be the RVA of the malicious DLL name, the DLL that has been copied in the <em>C:\Windows\System32</em> folder. Next time one of the compromised executable in <em>C:\Windows\System32\</em> is executed, the malicious DLL will be loaded. And calls to APIs “exported” by the malicious DLL will be forwarded to the legitimate <em>kernel32.dll</em>.</p>
 
 <h2 id="dll_analysis">Analysis of the malicious DLL</h2>
 
@@ -775,7 +775,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 <span class="err">0</span><span class="nf">x100011AF</span>    <span class="nv">call</span>    <span class="nb">ebx</span> <span class="c1">; CreateProcessA</span>
 <span class="err">0</span><span class="nf">x100011B1</span>    <span class="nv">jmp</span>     <span class="nv">retry</span>
 </code></pre></div>    </div>
-    <p>If an unrecognised commmand is received, the DLL sleeps for 0x60000 milliseconds and loops to the sending of the <em>hello</em> string.</p>
+    <p>If an unrecognised commmand is received, the DLL sleeps for 0x60000 milliseconds and loops up to the sending of the <em>hello</em> string.</p>
   </li>
 </ol>
 
