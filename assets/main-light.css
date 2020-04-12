@@ -4,14 +4,35 @@
 
 /** Style variables */
 /** Global */
-body { background-color: var(--background-color); margin: 0 auto; padding: 0; font-family: "Source Code Pro", monospace; font-size: 12.5px; color: var(--text-color); text-align: left; line-height: 1.5 !important; }
+body { counter-reset: h2; background-color: var(--background-color); margin: 0 auto; padding: 0; font-family: "Source Code Pro", monospace; font-size: 14px; color: var(--text-color); text-align: left; line-height: 1.5 !important; }
 
-h1, h2, h3, h4, h5, h6 { font-size: 12.5px; margin: 0px; margin-top: 22px; font-weight: bold; color: var(--text-color); }
+h1, h2, h3, h4, h5, h6 { font-size: 14px; margin: 0px; margin-top: 22px; font-weight: bold; color: var(--text-color); }
+
+h2 { counter-reset: h3; }
+
+h2:before { content: counter(h2, decimal) ". "; counter-increment: h2; }
+
+h3 { counter-reset: h4; }
+
+h3:before { content: counter(h2) "." counter(h3) ". "; counter-increment: h3; }
+
+h4 { counter-reset: h5; }
+
+h4:before { content: counter(h2) "." counter(h3) "." counter(h4) ". "; counter-increment: h4; }
+
+h5 { counter-reset: h6; }
+
+h5:before { content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) ". "; counter-increment: h5; }
+
+h6:before { content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) "." counter(h6) ". "; counter-increment: h6; }
+
+h2.nocount:before, h3.nocount:before, h4.nocount:before, h5.nocount:before, h6.nocount:before { content: none; counter-increment: none; }
 
 p, ul, ol { margin: 0px; color: var(--text-color); }
 
-a { text-decoration: underline; color: var(--link-color); }
+a { text-decoration: none; color: var(--code-color-5); }
 
+/* ori=var(--link-color) */
 a:hover { color: var(--background-color); background-color: var(--base-color); }
 
 .primary-text { color: var(--primary-color); }
@@ -63,7 +84,7 @@ footer { margin-bottom: 20px; }
 /** Form */
 input, select, textarea { padding: 0; margin: 0; -webkit-appearance: none; -webkit-border-radius: 0; border: none; }
 
-input[type=text], select, textarea { width: 100%; resize: none; background-color: var(--background-color); color: var(--text-color); caret-color: var(--text-color); font-size: 12.5px; font-family: "Source Code Pro", monospace; line-height: 1.5; }
+input[type=text], select, textarea { width: 100%; resize: none; background-color: var(--background-color); color: var(--text-color); caret-color: var(--text-color); font-size: 14px; font-family: "Source Code Pro", monospace; line-height: 1.5; }
 
 input, select, textarea, textarea::-webkit-input-placeholder { text-indent: 0px; }
 
@@ -73,7 +94,7 @@ input, select, textarea, textarea::-webkit-input-placeholder { text-indent: 0px;
 
 ::-ms-input-placeholder { color: var(--placeholder-color); }
 
-input[type=submit] { font-size: 12.5px; font-family: "Source Code Pro", monospace; line-height: 1.5; cursor: pointer; color: var(--link-color); background-color: var(--background-color); }
+input[type=submit] { font-size: 14px; font-family: "Source Code Pro", monospace; line-height: 1.5; cursor: pointer; color: var(--link-color); background-color: var(--background-color); }
 
 input[type=submit]:hover { color: var(--background-color); background-color: var(--base-color); }
 
@@ -86,16 +107,16 @@ textarea { vertical-align: top; }
 
 figure.highlight { margin: 5px 0; }
 
-pre { background-color: var(--background-color); border: none; padding: 0; margin: 0; overflow: auto; font-size: 12.5px; color: var(--text-color); line-height: 1.7 !important; font-family: "Source Code Pro", monospace !important; }
+pre { background-color: var(--background-color); border: solid; border-width: 1px; border-radius: 5px; padding-left: 5px; margin: 5; overflow: auto; font-size: 14px; color: var(--text-color); line-height: 1.7 !important; font-family: "Source Code Pro", monospace !important; }
 
 .highlight .hll { background-color: var(--code-color-2); }
 
 .highlight .c { color: var(--code-color-1); font-style: italic; }
 
 /* Comment */
-.highlight .err { color: var(--code-color-3); background-color: var(--code-color-4); }
+.highlight .err { color: var(--code-color-18); }
 
-/* Error */
+/* Error ; (ori=3)*/
 .highlight .k { color: var(--code-color-5); }
 
 /* Keyword */
@@ -168,9 +189,9 @@ pre { background-color: var(--background-color); border: none; padding: 0; margi
 .highlight .na { color: var(--code-color-16); }
 
 /* Name.Attribute */
-.highlight .nb { color: var(--code-color-13); }
+.highlight .nb { color: var(--code-color-9); }
 
-/* Name.Builtin */
+/* Name.Builtin ; (ori=13) */
 .highlight .nc { color: var(--code-color-9); text-decoration: underline; }
 
 /* Name.Class */
@@ -183,36 +204,36 @@ pre { background-color: var(--background-color); border: none; padding: 0; margi
 .highlight .ni { color: var(--code-color-17); font-weight: bold; }
 
 /* Name.Entity */
-.highlight .nf { color: var(--code-color-9); }
+.highlight .nf { color: var(--code-color-18); }
 
-/* Name.Function */
+/* Name.Function ; (ori=9) */
 .highlight .nn { color: var(--code-color-13); text-decoration: underline; }
 
 /* Name.Namespace */
 .highlight .nt { color: var(--code-color-16); font-weight: bold; }
 
 /* Name.Tag */
-.highlight .nv { color: var(--code-color-7); }
+.highlight .nv { color: var(--code-color-16); }
 
-/* Name.Variable */
+/* Name.Variable ; (ori=7) */
 .highlight .ow { color: var(--code-color-5); }
 
 /* Operator.Word */
 .highlight .w { color: var(--code-color-18); }
 
 /* Text.Whitespace */
-.highlight .mf { color: var(--code-color-14); }
+.highlight .mf { color: var(--code-color-5); }
 
-/* Literal.Number.Float */
-.highlight .mh { color: var(--code-color-14); }
+/* Literal.Number.Float ; (ori=14) */
+.highlight .mh { color: var(--code-color-5); }
 
-/* Literal.Number.Hex */
-.highlight .mi { color: var(--code-color-14); }
+/* Literal.Number.Hex ; (ori=14) */
+.highlight .mi { color: var(--code-color-5); }
 
-/* Literal.Number.Integer */
-.highlight .mo { color: var(--code-color-14); }
+/* Literal.Number.Integer ; (ori=14) */
+.highlight .mo { color: var(--code-color-5); }
 
-/* Literal.Number.Oct */
+/* Literal.Number.Oct ; (ori=14) */
 .highlight .sb { color: var(--code-color-15); }
 
 /* Literal.String.Backtick */

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PE header</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="PE header" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Context" />
+<meta property="og:description" content="Context" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-04-04T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","headline":"PE header","dateModified":"2020-04-04T00:00:00+02:00","datePublished":"2020-04-04T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/cheatsheets/pe/"},"url":"/cheatsheets/pe/","description":"Context","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="context">Context</h1>
+
+<p>Information related to the PE header I collected here and there. My favorite resources on the subject, however, are Goppit and Iczelion’s tutorials (both available on <a href="https://tuts4you.com/download/category/30/" title="tuts4you">tuts4you</a>), but it’s just a personal preference.
+Pictures are made with <a href="https://pencil.evolus.vn">Pencil</a> and are freely reusable.</p>
+
+<h1 id="data_directories">Reaching the Data Directories</h1>
+
+<p>In a classical PE file, we find at offset <em>0x3C</em> the field <strong>e_lfanew</strong>. The value it contains is the offset to the <strong>NtHeaders</strong> structure (<a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_nt_headers32" title="MSDN"><strong>IMAGE_NT_HEADERS</strong></a> in the MSDN), where we find the famous <em>PE\x00\x00</em> signature. At offset <em>PE+0x78</em> starts the <strong>Data Directories</strong> (<a href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-data-directories-image-only" title="MSDN">Optional Header Data Directories</a> in the MSDN), which is an array of <strong>IMAGE_DATA_DIRECTORY</strong> structures:</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">_IMAGE_DATA_DIRECTORY</span> <span class="p">{</span>
+    <span class="n">DWORD</span>   <span class="n">VirtualAddress</span><span class="p">;</span>
+    <span class="n">DWORD</span>   <span class="n">Size</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">IMAGE_DATA_DIRECTORY</span><span class="p">,</span> <span class="o">*</span><span class="n">PIMAGE_DATA_DIRECTORY</span><span class="p">;</span>
+</code></pre></div></div>
+<blockquote>
+  <p><em>Note that VirtualAddress is in fact a RVA.</em></p>
+</blockquote>
+
+<p>The first entry allows getting the RVA and size of the <strong>export table</strong> (<a href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#export-directory-table">Export Directory Table</a> in the MSDN), while the second allows getting the RVA and size of the <strong>import table</strong> (<a href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#import-directory-table">Import Directory Table</a> in the MSDN). In short:</p>
+
+<ul>
+  <li>PE+0x78 = export table RVA</li>
+  <li>PE+0x7C = export table Size</li>
+  <li>PE+0x80 = import table RVA</li>
+  <li>PE+0x84 = import table Size</li>
+</ul>
+
+<h1 id="export_table">Export table</h1>
+
+<p>The export table lists the functions a given PE file (often a DLL) makes available to other PE files. For example, if the dynamic library <em>lib1.dll</em> exports the function <em>funct1</em>, any executable code can call <em>funct1</em>. The figure below depicts an overview of the export table:
+<a href="/assets/cheatsheets/pe/export_table.png"><img src="/assets/cheatsheets/pe/resized_export_table.png" alt="pe-export-table" /></a></p>
+
+<ol>
+  <li>Focusing on the red part of the figure, we see the <strong>IMAGE_EXPORT_DIRECTORY</strong> structure has 11 fields, but only a part will be of interest here (this structure can be accessed with the RVA at <em>PE+0x78</em>, see <a href="#data_directories">above</a>):
+    <ol>
+      <li><strong>NameRVA</strong> is the RVA of the name of the module (here the string “KERNEL32.DLL”).</li>
+      <li><strong>NumberOfFunctions</strong> is the total count of functions exported by the module.</li>
+      <li><strong>NumberOfNames</strong> is the total count of named functions exported by the module.</li>
+    </ol>
+  </li>
+  <li>The next important field is <strong>AddressofFunctions</strong>: this is the RVA of the <strong>ExportAddressTable</strong> (green part of the figure). Each entry in the ExportAddressTable is also an RVA, and it can points either to (i) code or (ii) a string:
+    <ol>
+      <li>if it points to code, this is the code executed when calling a given API. In the figure above, the RVA at ExportAddresstable[2] allows reaching the code of the function <em>AcquireSRWLockExclusive</em>.</li>
+      <li>if an entry in the ExportAddressTable points to a string, we’re dealing with a <strong>forwarded export</strong>. On my laptop, for example, the entry corresponding to the API <em>HeapAlloc</em> in <em>kernel32.dll</em> points to the string “<em>NTDLL.RtlAllocateHeap</em>”. This means any call to <em>HeapAlloc</em> in a given program will be forwarded to the API <em>RtlAllocateHeap</em> exported by <em>ntdll.dll</em> (see also the <a href="https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#export-address-table">MSDN</a>). This feature abused <a href="/series/pma/pma-Lab01-01">here</a> for example.</li>
+    </ol>
+  </li>
+  <li>The last two important fields are <strong>AddressOfNames</strong> and <strong>AddressOfNamesOrdinal</strong>: both are RVA, pointing to the arrays <strong>ExportNamePointerTable</strong> and <strong>ExportOrdinalTable</strong>, respectively (blue part of the figure).
+    <ol>
+      <li><strong>ExportNamePointerTable</strong> is an array of RVAs pointing to strings. These strings are the public names we use when calling functions by their name and are located in a table called <strong>ExportNameTable</strong>.</li>
+      <li><strong>ExportOrdinalTable</strong>: an array of <em>words</em>, where each word is the index of an RVA inside the ExportAddressTable. Often, we parse the ExportOrdinalTable and the ExportNamePointerTable in parallel.</li>
+    </ol>
+  </li>
+</ol>
+
+<p>Let’s illustrate this by finding the API <em>AquireSRWLockExclusive</em> (follow with the figure):</p>
+<ul>
+  <li>parse the ExportNamePointerTable and the ExportOrdinalTable in parallel;</li>
+  <li>for each entry in the ExportNamePointerTable, do a string comparison with the name of the API we want;</li>
+  <li>when the correct entry is found, get its index: on the figure its ExportNamePointerTable[0];</li>
+  <li>use this index to retrieve the correct word in the ExportOrdinalTable: ExportOrdinalTable[0] = 0x0002</li>
+  <li>use this word as an index in the ExportAddressTable: ExportAddressTable[2] = RVA of AquireSRWLockExclusive.</li>
+</ul>
+
+<h1 id="import_table">Import table</h1>
+
+<p>Import table of an executable lists external functions a PE needs to run. The figure below depicts an overview of the import table:
+<a href="/assets/cheatsheets/pe/import_table.png"><img src="/assets/cheatsheets/pe/resized_import_table.png" alt="pe-import-table" /></a></p>
+
+<p>Information is split in 3 parts (red, blue and green on the figure):</p>
+
+<ol>
+  <li>
+    <p>Looking at the red part, we have the <strong>IMAGE_IMPORT_DESCRIPTOR</strong> structure that can be accessed from the RVA at <em>PE+0x80</em> (see <a href="#data_directories">above</a>). In a classical PE, there are as many IMAGE_IMPORT_DESCRIPTOR structures as DLL this PE depends on. For example, if a PE uses APIs exported by <em>kernel32.dll</em>, <em>ws2_32.dll</em>, and <em>msvcrt.dll</em>, the RVA at <em>PE+0x80</em> will points to an array of 3 IMAGE_IMPORT_DESCRIPTOR structures.</p>
+
+    <p>Three fields are of interest here:</p>
+    <ol>
+      <li><strong>Name1</strong>: the RVA of the name of the DLL exporting the required APIs</li>
+      <li><strong>OriginalFirstThunk</strong>: an array of RVAs (in fact an array of <strong>IMAGE_THUNK_DATA</strong>, but let’s take a shortcut), each pointing to an <strong>IMAGE_IMPORT_BY_NAME</strong> structure</li>
+      <li><strong>FirstThunk</strong>: before imports resolution (when the PE is on disk), it’s a copy of the OriginalFirstThunk; after imports resolution (after a PE has been loaded in memory), it’s an array of virtual addresses pointing to the entrypoints of APIs.</li>
+    </ol>
+
+    <p>Both OriginalFirstThunk and FirstThunk should be considered before (blue part) and after (green part) imports resolution.</p>
+  </li>
+  <li>The blue part shows OriginalFirstThunk and FirstThunk before imports resolution: both are arrays of RVAs pointing to IMAGE_IMPORT_BY_NAME structures:
+    <div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">_IMAGE_IMPORT_BY_NAME</span> <span class="p">{</span>
+ <span class="n">WORD</span>    <span class="n">Hint</span><span class="p">;</span>
+ <span class="n">BYTE</span>    <span class="n">Name</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+<span class="p">}</span> <span class="n">IMAGE_IMPORT_BY_NAME</span><span class="p">,</span> <span class="o">*</span><span class="n">PIMAGE_IMPORT_BY_NAME</span><span class="p">;</span>
+</code></pre></div>    </div>
+    <p>This field <strong>Name</strong> in this structure is the name of the API to import (let’s ignore <strong>Hint</strong> for the moment).</p>
+  </li>
+  <li>After imports resolution (green part), the RVAs of the FirstThink are replaced by virtual addresses of the APIs.</li>
+</ol>
+
+<p>TODO: IMAGE_THUNK_DATA, ordinal versus addressofdata, hint, msb</p>
+
+<h1 id="file-and-section-alignments">File and section alignments</h1>
+<p>todo</p>
+
+<h1 id="rva-to-offset">RVA to offset</h1>
+
+<p>use the sections table and find which section should contain the value of the RVA:
+if section.start &lt;= RVA &lt; section.end, bingo. then black magic:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(RVA - section_virtual_address) + section_raw_address
+</code></pre></div></div>
+
+<h1 id="offset-to-rva">Offset to RVA</h1>
+<p>todo</p>
+
+<h1 id="not-by-hand">not by hand</h1>
+<p>todo</p>
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>

