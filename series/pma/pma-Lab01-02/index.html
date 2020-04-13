@@ -8,12 +8,12 @@
 <meta property="og:title" content="Lab01-02" />
 <meta name="author" content="silma" />
 <meta property="og:locale" content="en_US" />
-<meta name="description" content="abckhl fd" />
-<meta property="og:description" content="abckhl fd" />
+<meta name="description" content="Practical Malware Analysis Lab01-02" />
+<meta property="og:description" content="Practical Malware Analysis Lab01-02" />
 <meta property="og:type" content="article" />
-<meta property="article:published_time" content="2020-04-05T00:00:00+02:00" />
+<meta property="article:published_time" content="2020-04-13T00:00:00+02:00" />
 <script type="application/ld+json">
-{"@type":"BlogPosting","headline":"Lab01-02","dateModified":"2020-04-05T00:00:00+02:00","datePublished":"2020-04-05T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/pma/pma-Lab01-02/"},"url":"/series/pma/pma-Lab01-02/","author":{"@type":"Person","name":"silma"},"description":"abckhl fd","@context":"https://schema.org"}</script>
+{"@type":"BlogPosting","headline":"Lab01-02","dateModified":"2020-04-13T00:00:00+02:00","datePublished":"2020-04-13T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/pma/pma-Lab01-02/"},"url":"/series/pma/pma-Lab01-02/","author":{"@type":"Person","name":"silma"},"description":"Practical Malware Analysis Lab01-02","@context":"https://schema.org"}</script>
 <!-- End Jekyll SEO tag -->
 <link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
 <body>
@@ -23,7 +23,156 @@
   </div>
 </header>
 <main>
-      <p>abckhl fd</p>
+      <h1 id="practical-malware-analysis-lab01-02">Practical Malware Analysis Lab01-02</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> UPX, IDA Free 7.0
+<strong>Prerequistes:</strong> None
+<strong>IDA database:</strong> <a href="/assets/series/pma/Lab01-02_decompressed.i64">Lab01-02_decompressed.i64</a><br />
+<a href=""></a></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Size</th>
+      <th>MD5</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lab01-02.exe</td>
+      <td>03 Ko</td>
+      <td>8363436878404da0ae3e46991e355b83</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+<h2 id="overview">Overview</h2>
+
+<p>This is a small upxed binary that acts as a service process. It:</p>
+<ul>
+  <li><a href="#unp">unpacks</a> itself;</li>
+  <li><a href="#svc">Creates</a> an autostart service named <em>Malservice</em>;</li>
+  <li><a href="#network">Joins</a> the URL <em>http://www.malwareanalysisbook.com</em>.</li>
+</ul>
+
+<h2 id="unp">Unpacking</h2>
+
+<p>The purpose of UPX is to reduce the size of a binary, not to protect it. Thus, unpacking is straightforward:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>upx <span class="nt">-d</span> <span class="nt">-o</span> Lab01-02_decompressed.exe Lab01-02.exe
+</code></pre></div></div>
+
+<h2 id="svc">Service creation</h2>
+
+<p>The <em>main()</em> function starts by calling the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-startservicectrldispatchera"><em>StartServiceCtrlDispatcherA</em></a>, which connects the main thread to the service manager:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401003</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">10h</span><span class="o">+</span><span class="nv">ServiceStartTable</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401007</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">10h</span><span class="o">+</span><span class="nv">ServiceStartTable.lpServiceName</span><span class="p">],</span> <span class="nv">offset</span> <span class="nv">aMalservice</span> <span class="c1">; "MalService"</span>
+<span class="err">0</span><span class="nf">x0040100F</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpServiceStartTable</span>
+<span class="err">0</span><span class="nf">x00401010</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">14h</span><span class="o">+</span><span class="nv">ServiceStartTable.lpServiceProc</span><span class="p">],</span> <span class="nv">offset</span> <span class="nv">ServiceMain</span>
+<span class="err">0</span><span class="nf">x00401018</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">14h</span><span class="o">+</span><span class="nv">var_8</span><span class="p">],</span> <span class="mi">0</span>
+<span class="err">0</span><span class="nf">x00401020</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">14h</span><span class="o">+</span><span class="nv">var_4</span><span class="p">],</span> <span class="mi">0</span>
+<span class="err">0</span><span class="nf">x00401028</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">StartServiceCtrlDispatcherA</span>
+<span class="err">0</span><span class="nf">x0040102E</span>    <span class="nv">push</span>    <span class="mi">0</span>
+<span class="err">0</span><span class="nf">x00401030</span>    <span class="nv">push</span>    <span class="mi">0</span>
+<span class="err">0</span><span class="nf">x00401032</span>    <span class="nv">call</span>    <span class="nv">ServiceMain</span>
+</code></pre></div></div>
+<p>Immediately after, the <em>ServiceMain()</em> is called.<br />
+The <em>ServiceMain()</em> starts by checking the existence of a mutex named “<em>HGL345</em>”:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401046</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Name</span>     <span class="c1">; "HGL345"</span>
+<span class="err">0</span><span class="nf">x0040104B</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; bInheritHandle</span>
+<span class="err">0</span><span class="nf">x0040104D</span>    <span class="nv">push</span>    <span class="mh">1F0001h</span>         <span class="c1">; dwDesiredAccess</span>
+<span class="err">0</span><span class="nf">x00401052</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">OpenMutexA</span>
+<span class="err">0</span><span class="nf">x00401058</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>The process exits if the mutex already exists, else it creates it (code not shown).<br />
+Then comes the creation of the service. First, a handle to the <em>service control manager</em> is requested:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401074</span>    <span class="nv">push</span>    <span class="mi">3</span>     <span class="c1">; SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE</span>
+<span class="err">0</span><span class="nf">x00401076</span>    <span class="nv">push</span>    <span class="mi">0</span>     <span class="c1">; lpDatabaseName</span>
+<span class="err">0</span><span class="nf">x00401078</span>    <span class="nv">push</span>    <span class="mi">0</span>     <span class="c1">; lpMachineName</span>
+<span class="err">0</span><span class="nf">x0040107A</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">OpenSCManagerA</span>
+<span class="err">0</span><span class="nf">x00401080</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>Next, the full path of the binary is retrieved:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401082</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">404h</span><span class="o">+</span><span class="nv">Filename</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401086</span>    <span class="nv">push</span>    <span class="mh">3E8h</span>            <span class="c1">; nSize</span>
+<span class="err">0</span><span class="nf">x0040108B</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpFilename</span>
+<span class="err">0</span><span class="nf">x0040108C</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; hModule: 0=self</span>
+<span class="err">0</span><span class="nf">x0040108E</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">GetModuleFileNameA</span>
+</code></pre></div></div>
+<p>Finally, the service is created:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401094</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpPassword</span>
+<span class="err">0</span><span class="nf">x00401096</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpServiceStartName</span>
+<span class="err">0</span><span class="nf">x00401098</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpDependencies</span>
+<span class="err">0</span><span class="nf">x0040109A</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpdwTagId</span>
+<span class="err">0</span><span class="nf">x0040109C</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">414h</span><span class="o">+</span><span class="nv">Filename</span><span class="p">]</span> <span class="c1">; malware full path</span>
+<span class="err">0</span><span class="nf">x004010A0</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpLoadOrderGroup</span>
+<span class="err">0</span><span class="nf">x004010A2</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; lpBinaryPathName</span>
+<span class="err">0</span><span class="nf">x004010A3</span>    <span class="nv">push</span>    <span class="nv">SERVICE_ERROR_IGNORE</span> <span class="c1">; dwErrorControl</span>
+<span class="err">0</span><span class="nf">x004010A5</span>    <span class="nv">push</span>    <span class="nv">SERVICE_AUTO_START</span> <span class="c1">; dwStartType</span>
+<span class="err">0</span><span class="nf">x004010A7</span>    <span class="nv">push</span>    <span class="nv">SERVICE_WIN32_OWN_PROCESS</span> <span class="c1">; dwServiceType</span>
+<span class="err">0</span><span class="nf">x004010A9</span>    <span class="nv">push</span>    <span class="nv">SC_MANAGER_CREATE_SERVICE</span> <span class="c1">; dwDesiredAccess</span>
+<span class="err">0</span><span class="nf">x004010AB</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nb">Disp</span><span class="nv">layName</span> <span class="c1">; "Malservice"</span>
+<span class="err">0</span><span class="nf">x004010B0</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nb">Disp</span><span class="nv">layName</span> <span class="c1">; "Malservice"</span>
+<span class="err">0</span><span class="nf">x004010B5</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; hSCManager</span>
+<span class="err">0</span><span class="nf">x004010B6</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">CreateServiceA</span>
+</code></pre></div></div>
+<p>The service named <strong>“Malservice</strong>” will be started automatically by the service control manager during system startup (<strong>SERVICE_AUTO_START</strong>) and will run in its own address space (<strong>SERVICE_WIN32_OWN_PROCESS</strong>).<br />
+Once the service is created, a timer is set for the year 2100:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010CE</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpFileTime</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010D3</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; lpSystemTime</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010D8</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">40Ch</span><span class="o">+</span><span class="nv">SystemTime.wYear</span><span class="p">],</span> <span class="mi">2100</span>
+<span class="err">0</span><span class="nf">x004010DF</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">SystemTimeToFileTime</span>
+<span class="err">0</span><span class="nf">x004010E5</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpTimerName</span>
+<span class="err">0</span><span class="nf">x004010E7</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; bManualReset</span>
+<span class="err">0</span><span class="nf">x004010E9</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpTimerAttributes</span>
+<span class="err">0</span><span class="nf">x004010EB</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">CreateWaitableTimerA</span>
+<span class="err">0</span><span class="nf">x004010F1</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; fResume</span>
+<span class="err">0</span><span class="nf">x004010F3</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpArgToCompletionRoutine</span>
+<span class="err">0</span><span class="nf">x004010F5</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; pfnCompletionRoutine</span>
+<span class="err">0</span><span class="nf">x004010F7</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">410h</span><span class="o">+</span><span class="nv">FileTime</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010FB</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">eax</span>        <span class="c1">; hTimer</span>
+<span class="err">0</span><span class="nf">x004010FD</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lPeriod: signaled once</span>
+<span class="err">0</span><span class="nf">x004010FF</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; lpDueTime: time after which the timer is signaled</span>
+<span class="err">0</span><span class="nf">x00401100</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; hTimer</span>
+<span class="err">0</span><span class="nf">x00401101</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">SetWaitableTimer</span>
+</code></pre></div></div>
+<p>The thread waits indefinitely until the timer is signaled:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401107</span>    <span class="nv">push</span>    <span class="mh">0FFFFFFFFh</span>      <span class="c1">; dwMilliseconds</span>
+<span class="err">0</span><span class="nf">x00401109</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; hTimer</span>
+<span class="err">0</span><span class="nf">x0040110A</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">WaitForSingleObject</span>
+</code></pre></div></div>
+<p>If the timer is signaled, a thread sending HTTP requests is created.</p>
+
+<h2 id="network">Network</h2>
+
+<p>The thread starts by initializing the use of the Wininet functions:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401152</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwFlags</span>
+<span class="err">0</span><span class="nf">x00401154</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpszProxyBypass</span>
+<span class="err">0</span><span class="nf">x00401156</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpszProxy</span>
+<span class="err">0</span><span class="nf">x00401158</span>    <span class="nv">push</span>    <span class="nv">INTERNET_OPEN_TYPE_DIRECT</span> <span class="c1">; dwAccessType</span>
+<span class="err">0</span><span class="nf">x0040115A</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">szAgent</span>  <span class="c1">; "Internet Explorer 8.0"</span>
+<span class="err">0</span><span class="nf">x0040115F</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">InternetOpenA</span>
+</code></pre></div></div>
+<p>Then, it enters into an infinite loop that opens the URL <em>http://www.malwareanalysisbook.com</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040116D</span> <span class="nv">loop</span><span class="p">:</span>
+<span class="err">0</span><span class="nf">x0040116D</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwContext</span>
+<span class="err">0</span><span class="nf">x0040116F</span>    <span class="nv">push</span>    <span class="nv">INTERNET_FLAG_RELOAD</span> <span class="c1">; dwFlags</span>
+<span class="err">0</span><span class="nf">x00401174</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwHeadersLength</span>
+<span class="err">0</span><span class="nf">x00401176</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpszHeaders</span>
+<span class="err">0</span><span class="nf">x00401178</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">szUrl</span>    <span class="c1">; "http://www.malwareanalysisbook.com"</span>
+<span class="err">0</span><span class="nf">x0040117D</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; hInternet</span>
+<span class="err">0</span><span class="nf">x0040117E</span>    <span class="nv">call</span>    <span class="nb">edi</span> <span class="c1">; InternetOpenUrlA</span>
+<span class="err">0</span><span class="nf">x00401180</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loop</span>
+</code></pre></div></div>
+
+<hr />
+<p>end of file</p>
+
 
 
     </main><footer>
