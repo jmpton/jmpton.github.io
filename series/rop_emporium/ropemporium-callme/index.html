@@ -13,7 +13,7 @@
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2020-04-15T00:00:00+02:00" />
 <script type="application/ld+json">
-{"@type":"BlogPosting","headline":"03_callme","dateModified":"2020-04-15T00:00:00+02:00","url":"/series/rop_emporium/ropemporium-callme/","datePublished":"2020-04-15T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/rop_emporium/ropemporium-callme/"},"author":{"@type":"Person","name":"silma"},"description":"ROP Emporium callme","@context":"https://schema.org"}</script>
+{"@type":"BlogPosting","headline":"03_callme","dateModified":"2020-04-15T00:00:00+02:00","datePublished":"2020-04-15T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/rop_emporium/ropemporium-callme/"},"url":"/series/rop_emporium/ropemporium-callme/","author":{"@type":"Person","name":"silma"},"description":"ROP Emporium callme","@context":"https://schema.org"}</script>
 <!-- End Jekyll SEO tag -->
 <link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
 <body>
@@ -127,9 +127,9 @@ If inputs parameters are correct, the function opens the file <em>encrypted_flag
 <span class="err">0000000000000</span><span class="nf">A8D</span>    <span class="nv">jle</span>     <span class="nv">short</span> <span class="nv">decrypt_next</span>
 </code></pre></div></div>
 
-<h3 id="function-function-_callme_three">Function Function <em>_callme_three()</em>:</h3>
+<h3 id="function-_callme_three">Function <em>_callme_three()</em>:</h3>
 
-<p>Again, <em>edi</em>, <em>esi</em>, and <em>edx</em> has to be set to <em>1</em>, <em>2</em>, and <em>3</em>, respectively (code not shown). Then, it uses the content of the file <em>key2.dat</em> to decrypt the next 16 bytes of the flag. The decryption follows the same algorithm as in previous section, so code is not shown. You can have a look an my <a href="#decryption">reimplementation in Python</a>.</p>
+<p>Again, <em>edi</em>, <em>esi</em>, and <em>edx</em> has to be set to <em>1</em>, <em>2</em>, and <em>3</em>, respectively (code not shown). Then, it uses the content of the file <em>key2.dat</em> to decrypt the next 16 bytes of the flag. The decryption follows the same algorithm as in the previous section, so code is not shown. You can have a look an my <a href="#decryption">reimplementation in Python</a>.</p>
 
 <h2 id="function-usefulgadgets">Function <em>usefulGadgets()</em>:</h2>
 
@@ -140,13 +140,13 @@ If inputs parameters are correct, the function opens the file <em>encrypted_flag
 <span class="err">0000000000401</span><span class="nf">AB2</span>    <span class="nv">pop</span>     <span class="nb">rdx</span>
 <span class="err">0000000000401</span><span class="nf">AB3</span>    <span class="nv">retn</span>
 </code></pre></div></div>
-<p>So, if we were to call the function <em>usefulGadgets()</em> with the following stack frame, we could successfully call and execute the function <em>callme_one()</em>:</p>
+<p>So, if we were to call the function <em>usefulGadgets()</em> with the following stack frame, we could successfully call and execute the function <em>_callme_one()</em>:</p>
 <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>0x0000000000000001
 0x0000000000000002
 0x0000000000000003
-addr _callme\_one()_ 
+addr _callme_one()
 </code></pre></div></div>
-<p>Successfull calls to <em>callme_two()</em> and <em>callme_three()</em> would follow the same idea.</p>
+<p>Successfull calls to <em>_callme_two()</em> and <em>_callme_three()</em> would follow the same idea.</p>
 
 <h2 id="function-usefulfunction">Function <em>usefulFunction()</em>:</h2>
 
@@ -170,7 +170,7 @@ addr _callme\_one()_
 <span class="err">0000000000401</span><span class="nf">A9C</span>    <span class="nv">call</span>    <span class="nv">_exit</span>
 <span class="err">0000000000401</span><span class="nf">A9C</span> <span class="nv">usefulFunction</span>  <span class="nv">endp</span>
 </code></pre></div></div>
-<p>It may be tempting to build an exploit executing code at addresses <em>0x0401A92</em>, <em>0x0401A7E</em>, and <em>0x0401A6A</em>. However, doing this will just make us loose the control we have over <em>rip</em>. Indeed, if the instruction at <em>0x0401A92</em> is executed, the return address <em>0x0401A97</em> will be set automatically on the stack. And game over for us. Instead, we will use the address of <em>_callme_xxx()</em> functions from the <em>procedure linkage table</em>:</p>
+<p>It may be tempting to build an exploit executing code at addresses <em>0x0401A92</em>, <em>0x0401A7E</em>, and <em>0x0401A6A</em>. However, doing this will just make us to lose the control we have over <em>rip</em>. Indeed, if the instruction at <em>0x0401A92</em> is executed, the return address <em>0x0401A97</em> will be set automatically on the stack. And game over for us. Instead, we will use the address of <em>_callme_xxx()</em> functions from the <em>procedure linkage table</em>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.plt:</span><span class="err">0000000000401810</span> <span class="nf">_callme_three</span>   <span class="nv">proc</span> <span class="nv">near</span>
 <span class="nl">.plt:</span><span class="err">0000000000401810</span>    <span class="nf">jmp</span>     <span class="nb">cs</span><span class="p">:</span><span class="nv">off_602028</span> <span class="c1">; got.plt callme_three</span>
 <span class="nl">.plt:</span><span class="err">0000000000401810</span> <span class="nf">_callme_three</span>   <span class="nv">endp</span>
@@ -229,6 +229,8 @@ addr _callme\_one()_
 
 <span class="k">print</span><span class="p">(</span><span class="n">decrypted</span><span class="p">)</span>
 </code></pre></div></div>
+<hr />
+<p>end of file</p>
 
 
     </main><footer>
