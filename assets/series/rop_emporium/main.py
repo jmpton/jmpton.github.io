@@ -62,9 +62,10 @@ def __check_decryption_algo():
     key = 1
     decrypted = ''
     for c in encrypted_flag:
-        if key <= 0x1f:
+        if key <= 0x20:
             decrypted += chr(c^key)
             key += 1
+
 
     return decrypted
 

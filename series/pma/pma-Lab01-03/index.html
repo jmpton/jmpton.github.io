@@ -53,9 +53,14 @@
 <hr />
 <h2 id="overview">Overview</h2>
 
-<p>An packed binary that use the COM library to access a resource on the Web.</p>
+<p>An packed binary that use the COM library to access a resource on the Web. It:</p>
+<ul>
+  <li><a href="#unpack">Unpacks</a> itself;</li>
+  <li><a href="#request_iface">Retrieves</a> an <em>IWebBrowser2</em> COM interface;</li>
+  <li><a href="#navigate">Connect</a> to the URL <em>http://www.malwareanalysisbook.com/ad.html</em>.</li>
+</ul>
 
-<h2 id="unpacking">Unpacking</h2>
+<h2 id="unpack">Unpacking</h2>
 
 <p>Go to address <em>0x004050E1</em>. When we match the condition “byte ptr [edi] == 0”, the plaintext malware is in memory. We single step to reach address <em>0x401090</em>, and we are at the original entrypoint:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">seg002:</span><span class="err">004050</span><span class="nf">DF</span>    <span class="nv">dec</span>     <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="p">]</span>
@@ -110,7 +115,7 @@
 
 <p>Finally, the parameter <em>ppv</em> (see the call to <em>CoCreateInstance</em> above) will receive a pointer to the interface <em>IWebBrowser2</em>.</p>
 
-<h2 id="calling-the-method-iwebbrowser2-navigate">Calling the method <em>IWebBrowser2-&gt;navigate()</em></h2>
+<h2 id="navigate">Calling the method <em>IWebBrowser2-&gt;navigate()</em></h2>
 
 <p>Now, the malware can use the methods available through the COM interface <em>IWebBrowser2</em>. Here it calls only one method. To identify it, lets have a look a the extract below:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040105C</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">28h</span><span class="o">+</span><span class="nv">ptrIWebBrowser2</span><span class="p">]</span> <span class="c1">; interface**</span>
