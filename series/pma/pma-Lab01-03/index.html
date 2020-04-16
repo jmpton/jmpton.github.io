@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Lab01-03</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="Lab01-03" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Practical Malware Analysis Lab01-03" />
+<meta property="og:description" content="Practical Malware Analysis Lab01-03" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-04-15T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","headline":"Lab01-03","dateModified":"2020-04-15T00:00:00+02:00","datePublished":"2020-04-15T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/pma/pma-Lab01-03/"},"url":"/series/pma/pma-Lab01-03/","author":{"@type":"Person","name":"silma"},"description":"Practical Malware Analysis Lab01-03","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="practical-malware-analysis-lab01-03">Practical Malware Analysis Lab01-03</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, x64dbg
+<strong>Prerequistes:</strong> Basic manual unpacking
+<strong>IDA databases:</strong> <a href="/assets/series/pma/Lab01-03_dump_SCY.i64">Lab01-03_dump_SCY_exe.i64</a>
+<a href=""></a></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Size</th>
+      <th>MD5</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lab01-03.exe</td>
+      <td>05 Ko</td>
+      <td>9c5c27494c28ed0b14853b346b113145</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+<h2 id="overview">Overview</h2>
+
+<p>An packed binary that use the COM library to access a resource on the Web.</p>
+
+<h2 id="unpacking">Unpacking</h2>
+
+<p>Set a breakpoint at address <em>0x004050E1</em>. When we reach it, the plaintext malware is in memory. We single step until we reach address <em>0x401090</em>, and we are at the original entrypoint:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">seg002:</span><span class="err">004050</span><span class="nf">DF</span>    <span class="nv">dec</span>     <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="p">]</span>
+<span class="nl">seg002:</span><span class="err">004050</span><span class="nf">E1</span>    <span class="nv">jz</span>      <span class="nv">near</span> <span class="nv">ptr</span> <span class="nv">OEP</span>
+</code></pre></div></div>
+<p>Once at the OEP, we fireup the Scylla plugin and follow the classical recipe:</p>
+<ul>
+  <li>IAT Autosearch</li>
+  <li>Get Imports</li>
+  <li>Dump</li>
+  <li>Fix Dump</li>
+</ul>
+
+<p>The resulting dump has 13 imports from <em>msvcrt.dll</em>, 3 imports from <em>oleaut32.dll</em>, and 3 imports from <em>ole32.dll</em>.</p>
+
+<h2 id="request_iface">Requesting an <em>IWebBrowser2</em> interface</h2>
+
+<p>The <em>main()</em> function starts by initializing the use of COM library functions:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401003</span>    <span class="nv">push</span>    <span class="mi">0</span>        <span class="c1">; pvReserved</span>
+<span class="err">0</span><span class="nf">x00401005</span>    <span class="nv">call</span>    <span class="nv">OleInitialize</span>
+</code></pre></div></div>
+<p>Then, it uses the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance"><em>CoCreateInstance</em></a> to instanciate an object of the class <em>Internet Explorer</em> and requests a pointer to the interface <em>IWebBrowser2</em> to communicate with the object:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040100F</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">24h</span><span class="o">+</span><span class="nv">ptrIWebBrowser2</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401013</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; ppv</span>
+<span class="err">0</span><span class="nf">x00401014</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">riid</span>     <span class="c1">; riid   ; 0x00402068</span>
+<span class="err">0</span><span class="nf">x00401019</span>    <span class="nv">push</span>    <span class="mi">4</span>               <span class="c1">; dwclscontext</span>
+<span class="err">0</span><span class="nf">x0040101B</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; punkouter</span>
+<span class="err">0</span><span class="nf">x0040101D</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">rclsid</span>   <span class="c1">; rclsid ; 0x00402058</span>
+<span class="err">0</span><span class="nf">x00401022</span>    <span class="nv">call</span>    <span class="nv">CoCreateInstance</span>
+</code></pre></div></div>
+<p>In the above snippet, the two important parameters are <em>rclsid</em> and <em>riid</em>. the first is a reference to a <strong>CLSID</strong>, and the second a reference to an <strong>IID</strong>.</p>
+<ol>
+  <li>the <strong>CLSID</strong> is the indentifier of the class the malware want to communicate with:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">seg002:</span><span class="err">00402058</span> <span class="c1">; IID rclsid</span>
+<span class="nl">seg002:</span><span class="err">00402058</span>    <span class="kd">dd</span> <span class="mh">2DF01h</span>               <span class="c1">; data1</span>
+<span class="nl">seg002:</span><span class="err">00402058</span>    <span class="kd">dw</span> <span class="mi">0</span>                    <span class="c1">; data2</span>
+<span class="nl">seg002:</span><span class="err">00402058</span>    <span class="kd">dw</span> <span class="mi">0</span>                    <span class="c1">; data3</span>
+<span class="nl">seg002:</span><span class="err">00402058</span>    <span class="kd">db</span> <span class="mh">0C0h</span><span class="p">,</span> <span class="mi">6</span> <span class="nv">dup</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="mh">46h</span>  <span class="c1">; data4 </span>
+</code></pre></div>    </div>
+    <p>We can reformat this to be more “Windows-compliant”: <strong>0002DF01-0000-0000-C000-000000000046</strong>. Now, to find name of the class to which this identifier corresponds, we can ask to online databases such as the <a href="https://uuid.pirate-server.com/0002df01-0000-0000-c000-000000000046">Global UUID Database</a>. Or, simply search this key in the Windows Registry: on my Windows 10 VM, the <em>data</em> asscociated with the <em>value</em> “Default” of the <em>key</em> <strong>HKEY_CLASSES_ROOT\Clsid\{0002DF01-0000-0000-C000-000000000046}</strong> is <strong>Internet Explorer(ver 1.0)</strong>.</p>
+  </li>
+  <li>the <strong>IID</strong> is the identifier of the interface the malware use to communicate with the object:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">seg002:</span><span class="err">00402068</span> <span class="c1">; IID riid</span>
+<span class="nl">seg002:</span><span class="err">00402068</span>    <span class="kd">dd</span> <span class="mh">0D30C1661h</span>           <span class="c1">; data1</span>
+<span class="nl">seg002:</span><span class="err">00402068</span>    <span class="kd">dw</span> <span class="mh">0CDAFh</span>               <span class="c1">; data2</span>
+<span class="nl">seg002:</span><span class="err">00402068</span>    <span class="kd">dw</span> <span class="mh">11D0h</span>                <span class="c1">; data3</span>
+<span class="nl">seg002:</span><span class="err">00402068</span>    <span class="kd">db</span> <span class="mh">8Ah</span><span class="p">,</span> <span class="mh">3Eh</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mh">0C0h</span><span class="p">,</span> <span class="mh">4Fh</span><span class="p">,</span> <span class="mh">0C9h</span><span class="p">,</span> <span class="mh">0E2h</span><span class="p">,</span> <span class="mh">6Eh</span><span class="c1">; data4</span>
+</code></pre></div>    </div>
+    <p>Reformatted, it gives us: <strong>D30C1661-CDAF-11D0-8A3E-00C04FC9E26E</strong>. It matches the entry for <em>IWebBrowser2</em> in the <a href="https://uuid.pirate-server.com/d30c1661-cdaf-11d0-8a3e-00c04fc9e26e">Global UUID Database</a>, and the <em>data</em> asscociated with the <em>value</em> “Default” of the <em>key</em> <strong>HKEY_CLASSES_ROOT\Interface\{D30C1661-CDAF-11D0-8A3E-00C04FC9E26E}</strong> is also <strong>IWebBrowser2</strong>.</p>
+  </li>
+</ol>
+
+<p>Finally, the parameter <em>ppv</em> (see the call to <em>CoCreateInstance</em> above) will receive a pointer to the interface <em>IWebBrowser2</em>.</p>
+
+<h2 id="calling-the-method-iwebbrowser2-navigate">Calling the method <em>IWebBrowser2-&gt;navigate()</em></h2>
+
+<p>Now, the malware can use the methods available through the COM interface <em>IWebBrowser2</em>. Here it calls only one method. To identify it, lets have a look a the extract below:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040105C</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">28h</span><span class="o">+</span><span class="nv">ptrIWebBrowser2</span><span class="p">]</span> <span class="c1">; interface**</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401065</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="p">]</span> <span class="c1">; interface*</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401074</span>    <span class="nv">call</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="mh">2Ch</span><span class="p">]</span> <span class="c1">; ?</span>
+</code></pre></div></div>
+<p>Basically, <em>edx</em> points to a table of pointers. We’re dealing with a 32 bits executable (pointers are 4 bytes long), so 0x2C/4 = 11. Thus, we want to find the method having index 11.
+What the MSDN says to us is the required header file to use the interface <em>IWebBrowser2</em> is <a href="https://docs.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/aa752127(v%3Dvs.85)#requirements">Exdisp.h</a>. It’s available online, so let’s go the the implementation of the <a href="https://github.com/tpn/winsdk-10/blob/9b69fd26ac0c7d0b83d378dba01080e93349c2ed/Include/10.0.14393.0/um/ExDisp.h#L1491">C style interface</a> of <em>IWebBrowser2</em>. Now we count from 0 to 11; <a href="https://github.com/tpn/winsdk-10/blob/9b69fd26ac0c7d0b83d378dba01080e93349c2ed/Include/10.0.14393.0/um/ExDisp.h#L1556">at index 11</a> we find the method <a href="https://docs.microsoft.com/en-us/previous-versions//aa752133(v=vs.85)?redirectedfrom=MSDN"><em>Navigate</em></a>. Now we known what method the malware calls, let’s get back to the code.<br />
+First, an empty variant is initialized. It won’t be modified, but is required to call the method <em>navigate</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401030</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">24h</span><span class="o">+</span><span class="nv">pvarg</span><span class="p">]</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401035</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; pvarg</span>
+<span class="err">0</span><span class="nf">x00401036</span>    <span class="nv">call</span>    <span class="nv">VariantInit</span>
+</code></pre></div></div>
+<p><a href=""></a>
+Next, the string <em>http://www.malwareanalysisbook.com/ad.html</em> is passed to the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysallocstring"><em>SysAllocString</em></a>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040103C</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">psz</span>      <span class="c1">; "http://www.malwareanal..."</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401050</span>    <span class="nv">call</span>    <span class="nv">SysAllocString</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040105A</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>This API returns a new string of type <a href="https://docs.microsoft.com/en-us/previous-versions/windows/desktop/automat/bstr">BSTR</a>. <strong>BSTR</strong> is a composite data type, where a dword preceeds a string (the value of the dword is the length of the string, not including the terminator). This is the data type used when playing with COM and strings.<br />
+Finally, <a href="https://docs.microsoft.com/en-us/previous-versions//aa752133(v=vs.85)">IWebBrowser2-&gt;navigate</a> is called:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401041</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">2Ch</span><span class="o">+</span><span class="nv">flags</span><span class="p">],</span> <span class="mi">3</span> <span class="c1">; navOpenInNewWindow | navNoHistory</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401056</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">28h</span><span class="o">+</span><span class="nv">pvarg</span><span class="p">]</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040105C</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">28h</span><span class="o">+</span><span class="nv">ptrIWebBrowser2</span><span class="p">]</span> <span class="c1">; IWebBrowser2**</span>
+<span class="err">0</span><span class="nf">x00401060</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; VARIANT* Headers</span>
+<span class="err">0</span><span class="nf">x00401061</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">2Ch</span><span class="o">+</span><span class="nv">pvarg</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401065</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="p">]</span>      <span class="c1">; IWebBrowser2*</span>
+<span class="err">0</span><span class="nf">x00401067</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; VARIANT* PostData</span>
+<span class="err">0</span><span class="nf">x00401068</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">30h</span><span class="o">+</span><span class="nv">pvarg</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040106C</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; VARIANT* TargetFrameName</span>
+<span class="err">0</span><span class="nf">x0040106D</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">34h</span><span class="o">+</span><span class="nv">flags</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401071</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; VARIANT* Flags</span>
+<span class="err">0</span><span class="nf">x00401072</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; BSTR URL</span>
+<span class="err">0</span><span class="nf">x00401073</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; this (seen in Exdisp.h)</span>
+<span class="err">0</span><span class="nf">x00401074</span>    <span class="nv">call</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="mh">2Ch</span><span class="p">]</span> <span class="c1">; IWebBrowser2-&gt;navigate</span>
+</code></pre></div></div>
+<p>Accessing the online resource somewhat redirect us to the feedback page of the book:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wget http://www.malwareanalysisbook.com/ad.html
+<span class="nt">--2020-04-15</span> 23:33:24--  http://www.malwareanalysisbook.com/ad.html
+Resolving www.malwareanalysisbook.com <span class="o">(</span>www.malwareanalysisbook.com<span class="o">)</span>... 184.168.131.241
+Connecting to www.malwareanalysisbook.com <span class="o">(</span>www.malwareanalysisbook.com<span class="o">)</span>|184.168.131.241|:80... connected.
+HTTP request sent, awaiting response... 301 Moved Permanently
+<span class="o">[</span>...]
+Location: https://practicalmalwareanalysis.com/?post_type<span class="o">=</span>feedback&amp;p<span class="o">=</span>191 <span class="o">[</span>following]
+<span class="nt">--2020-04-15</span> 23:33:25--  https://practicalmalwareanalysis.com/?post_type<span class="o">=</span>feedback&amp;p<span class="o">=</span>191
+Reusing existing connection to practicalmalwareanalysis.com:443.
+HTTP request sent, awaiting response... 404 Not Found
+2020-04-15 23:33:25 ERROR 404: Not Found.
+</code></pre></div></div>
+<hr />
+<p>end of file</p>
+
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>
