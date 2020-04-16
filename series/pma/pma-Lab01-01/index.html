@@ -137,7 +137,7 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
 
 <h3 id="rebuild_dll">Rebuild the malicious DLL</h3>
 
-<p>The malicious executable uses the legitimate <em>kernel32.dll</em> found on the system to rebuilds the malicious DLL. The 3 main steps are:</p>
+<p>The malicious executable uses the legitimate <em>kernel32.dll</em> found on the system to rebuild the malicious DLL. The 3 main steps are:</p>
 <ul>
   <li>The mapping of both <em>kernel32.dll</em> and <em>Lab01-01.dll</em> into its own address space (<a href="#memory_mapping_1">go there</a>);</li>
   <li>The rebuilding of the IMAGE_EXPORT_DIRECTORY of <em>Lab01-01.dll</em> (<a href="#rebuild_export_dir">go there</a>);</li>
