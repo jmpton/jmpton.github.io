@@ -10,10 +10,12 @@
 <meta property="og:locale" content="en_US" />
 <meta name="description" content="Practical Malware Analysis Lab01-03" />
 <meta property="og:description" content="Practical Malware Analysis Lab01-03" />
+<link rel="canonical" href="http://localhost:4000/series/pma/pma-Lab01-03/" />
+<meta property="og:url" content="http://localhost:4000/series/pma/pma-Lab01-03/" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2020-04-15T00:00:00+02:00" />
 <script type="application/ld+json">
-{"@type":"BlogPosting","headline":"Lab01-03","dateModified":"2020-04-15T00:00:00+02:00","datePublished":"2020-04-15T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/pma/pma-Lab01-03/"},"url":"/series/pma/pma-Lab01-03/","author":{"@type":"Person","name":"silma"},"description":"Practical Malware Analysis Lab01-03","@context":"https://schema.org"}</script>
+{"@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/series/pma/pma-Lab01-03/"},"url":"http://localhost:4000/series/pma/pma-Lab01-03/","headline":"Lab01-03","dateModified":"2020-04-15T00:00:00+02:00","datePublished":"2020-04-15T00:00:00+02:00","description":"Practical Malware Analysis Lab01-03","author":{"@type":"Person","name":"silma"},"@context":"https://schema.org"}</script>
 <!-- End Jekyll SEO tag -->
 <link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
 <body>
@@ -55,7 +57,7 @@
 
 <h2 id="unpacking">Unpacking</h2>
 
-<p>Set a breakpoint at address <em>0x004050E1</em>. When we reach it, the plaintext malware is in memory. We single step until we reach address <em>0x401090</em>, and we are at the original entrypoint:</p>
+<p>Go to address <em>0x004050E1</em>. When we match the condition “byte ptr [edi] == 0”, the plaintext malware is in memory. We single step to reach address <em>0x401090</em>, and we are at the original entrypoint:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">seg002:</span><span class="err">004050</span><span class="nf">DF</span>    <span class="nv">dec</span>     <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="p">]</span>
 <span class="nl">seg002:</span><span class="err">004050</span><span class="nf">E1</span>    <span class="nv">jz</span>      <span class="nv">near</span> <span class="nv">ptr</span> <span class="nv">OEP</span>
 </code></pre></div></div>
@@ -95,7 +97,7 @@
 </code></pre></div>    </div>
     <p>We can reformat this to be more “Windows-compliant”: <strong>0002DF01-0000-0000-C000-000000000046</strong>. Now, to find name of the class to which this identifier corresponds, we can ask to online databases such as the <a href="https://uuid.pirate-server.com/0002df01-0000-0000-c000-000000000046">Global UUID Database</a>. Or, simply search this key in the Windows Registry: on my Windows 10 VM, the <em>data</em> asscociated with the <em>value</em> “Default” of the <em>key</em> <strong>HKEY_CLASSES_ROOT\Clsid\{0002DF01-0000-0000-C000-000000000046}</strong> is <strong>Internet Explorer(ver 1.0)</strong>.</p>
   </li>
-  <li>the <strong>IID</strong> is the identifier of the interface the malware use to communicate with the object:
+  <li>the <strong>IID</strong> is the identifier of the interface the malware uses to communicate with the object:
     <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">seg002:</span><span class="err">00402068</span> <span class="c1">; IID riid</span>
 <span class="nl">seg002:</span><span class="err">00402068</span>    <span class="kd">dd</span> <span class="mh">0D30C1661h</span>           <span class="c1">; data1</span>
 <span class="nl">seg002:</span><span class="err">00402068</span>    <span class="kd">dw</span> <span class="mh">0CDAFh</span>               <span class="c1">; data2</span>
@@ -118,7 +120,7 @@
 <span class="err">0</span><span class="nf">x00401074</span>    <span class="nv">call</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="mh">2Ch</span><span class="p">]</span> <span class="c1">; ?</span>
 </code></pre></div></div>
 <p>Basically, <em>edx</em> points to a table of pointers. We’re dealing with a 32 bits executable (pointers are 4 bytes long), so 0x2C/4 = 11. Thus, we want to find the method having index 11.
-What the MSDN says to us is the required header file to use the interface <em>IWebBrowser2</em> is <a href="https://docs.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/aa752127(v%3Dvs.85)#requirements">Exdisp.h</a>. It’s available online, so let’s go the the implementation of the <a href="https://github.com/tpn/winsdk-10/blob/9b69fd26ac0c7d0b83d378dba01080e93349c2ed/Include/10.0.14393.0/um/ExDisp.h#L1491">C style interface</a> of <em>IWebBrowser2</em>. Now we count from 0 to 11; <a href="https://github.com/tpn/winsdk-10/blob/9b69fd26ac0c7d0b83d378dba01080e93349c2ed/Include/10.0.14393.0/um/ExDisp.h#L1556">at index 11</a> we find the method <a href="https://docs.microsoft.com/en-us/previous-versions//aa752133(v=vs.85)?redirectedfrom=MSDN"><em>Navigate</em></a>. Now we known what method the malware calls, let’s get back to the code.<br />
+What the MSDN says to us is the required header file to use the interface <em>IWebBrowser2</em> is <a href="https://docs.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/aa752127(v%3Dvs.85)#requirements">Exdisp.h</a>. It’s available online, so let’s go the the implementation of the <a href="https://github.com/tpn/winsdk-10/blob/9b69fd26ac0c7d0b83d378dba01080e93349c2ed/Include/10.0.14393.0/um/ExDisp.h#L1491">C style interface</a> of <em>IWebBrowser2</em>. We count from 0 to 11 and <a href="https://github.com/tpn/winsdk-10/blob/9b69fd26ac0c7d0b83d378dba01080e93349c2ed/Include/10.0.14393.0/um/ExDisp.h#L1556">at index 11</a> we find the method <a href="https://docs.microsoft.com/en-us/previous-versions//aa752133(v=vs.85)?redirectedfrom=MSDN"><em>Navigate</em></a>. Now we known what method the malware calls, let’s get back to the code.<br />
 First, an empty variant is initialized. It won’t be modified, but is required to call the method <em>navigate</em>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401030</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">24h</span><span class="o">+</span><span class="nv">pvarg</span><span class="p">]</span>
 <span class="err">[</span><span class="nf">...</span><span class="p">]</span>
