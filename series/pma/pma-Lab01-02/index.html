@@ -56,8 +56,8 @@
 <p>This is a small upxed binary that acts as a service process. It:</p>
 <ul>
   <li><a href="#unp">Unpacks</a> itself;</li>
-  <li><a href="#svc">Creates</a> an autostart service named <em>Malservice</em>;</li>
-  <li><a href="#network">Joins</a> the URL <em>http://www.malwareanalysisbook.com</em>.</li>
+  <li><a href="#svc">Creates</a> an autostart service named <strong>Malservice</strong>;</li>
+  <li><a href="#network">Joins</a> the URL <strong>http://www.malwareanalysisbook.com</strong>.</li>
 </ul>
 
 <h2 id="unp">Unpacking</h2>
@@ -68,7 +68,7 @@
 
 <h2 id="svc">Service creation</h2>
 
-<p>The <em>main()</em> function starts by calling the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-startservicectrldispatchera"><em>StartServiceCtrlDispatcherA</em></a>, which connects the main thread to the service manager:</p>
+<p>The <em>main()</em> function starts by calling the API <a href="https://docs.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-startservicectrldispatchera">StartServiceCtrlDispatcherA</a>, which connects the main thread to the <a href="https://docs.microsoft.com/en-us/windows/win32/services/service-control-manager">Service Control Manager</a> (SCM):</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401003</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">10h</span><span class="o">+</span><span class="nv">ServiceStartTable</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x00401007</span>    <span class="nv">mov</span>     <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">10h</span><span class="o">+</span><span class="nv">ServiceStartTable.lpServiceName</span><span class="p">],</span> <span class="nv">offset</span> <span class="nv">aMalservice</span> <span class="c1">; "MalService"</span>
 <span class="err">0</span><span class="nf">x0040100F</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpServiceStartTable</span>
@@ -81,7 +81,7 @@
 <span class="err">0</span><span class="nf">x00401032</span>    <span class="nv">call</span>    <span class="nv">ServiceMain</span>
 </code></pre></div></div>
 <p>Immediately after, the <em>ServiceMain()</em> is called.<br />
-The <em>ServiceMain()</em> starts by checking the existence of a mutex named “<em>HGL345</em>”:</p>
+The <em>ServiceMain()</em> starts by checking the existence of a mutex named “<strong>HGL345</strong>”:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401046</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">Name</span>     <span class="c1">; "HGL345"</span>
 <span class="err">0</span><span class="nf">x0040104B</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; bInheritHandle</span>
 <span class="err">0</span><span class="nf">x0040104D</span>    <span class="nv">push</span>    <span class="mh">1F0001h</span>         <span class="c1">; dwDesiredAccess</span>
@@ -89,14 +89,14 @@ The <em>ServiceMain()</em> starts by checking the existence of a mutex named “
 <span class="err">0</span><span class="nf">x00401058</span>    <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
 </code></pre></div></div>
 <p>The process exits if the mutex already exists, else it creates it (code not shown).<br />
-Then comes the creation of the service. First, a handle to the <em>service control manager</em> is requested:</p>
+Then comes the creation of the service. First, a handle to the <strong>SCM</strong> is requested:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401074</span>    <span class="nv">push</span>    <span class="mi">3</span>     <span class="c1">; SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE</span>
 <span class="err">0</span><span class="nf">x00401076</span>    <span class="nv">push</span>    <span class="mi">0</span>     <span class="c1">; lpDatabaseName</span>
 <span class="err">0</span><span class="nf">x00401078</span>    <span class="nv">push</span>    <span class="mi">0</span>     <span class="c1">; lpMachineName</span>
 <span class="err">0</span><span class="nf">x0040107A</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">OpenSCManagerA</span>
 <span class="err">0</span><span class="nf">x00401080</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">eax</span>
 </code></pre></div></div>
-<p>Next, the full path of the binary is retrieved:</p>
+<p>Next, the full path of the malware is retrieved:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00401082</span>    <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esp</span><span class="o">+</span><span class="mh">404h</span><span class="o">+</span><span class="nv">Filename</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x00401086</span>    <span class="nv">push</span>    <span class="mh">3E8h</span>            <span class="c1">; nSize</span>
 <span class="err">0</span><span class="nf">x0040108B</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpFilename</span>
@@ -120,7 +120,7 @@ Then comes the creation of the service. First, a handle to the <em>service contr
 <span class="err">0</span><span class="nf">x004010B5</span>    <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; hSCManager</span>
 <span class="err">0</span><span class="nf">x004010B6</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">CreateServiceA</span>
 </code></pre></div></div>
-<p>The service named <strong>“Malservice</strong>” will be started automatically by the service control manager during system startup (<strong>SERVICE_AUTO_START</strong>) and will run in its own address space (<strong>SERVICE_WIN32_OWN_PROCESS</strong>).<br />
+<p>The service named <strong>“Malservice</strong>” will be started automatically by the SCM during system startup (<strong>SERVICE_AUTO_START</strong>) and will run in its own address space (<strong>SERVICE_WIN32_OWN_PROCESS</strong>).<br />
 Once the service is created, a timer is set for the year 2100:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">[</span><span class="nf">...</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x004010CE</span>    <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; lpFileTime</span>
@@ -160,7 +160,7 @@ Once the service is created, a timer is set for the year 2100:</p>
 <span class="err">0</span><span class="nf">x0040115A</span>    <span class="nv">push</span>    <span class="nv">offset</span> <span class="nv">szAgent</span>  <span class="c1">; "Internet Explorer 8.0"</span>
 <span class="err">0</span><span class="nf">x0040115F</span>    <span class="nv">call</span>    <span class="nb">ds</span><span class="p">:</span><span class="nv">InternetOpenA</span>
 </code></pre></div></div>
-<p>Then, it enters into an infinite loop that opens the URL <em>http://www.malwareanalysisbook.com</em>:</p>
+<p>Then, it enters into an infinite loop that opens the URL <strong>http://www.malwareanalysisbook.com</strong>:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0040116D</span> <span class="nv">loop</span><span class="p">:</span>
 <span class="err">0</span><span class="nf">x0040116D</span>    <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; dwContext</span>
 <span class="err">0</span><span class="nf">x0040116F</span>    <span class="nv">push</span>    <span class="nv">INTERNET_FLAG_RELOAD</span> <span class="c1">; dwFlags</span>
