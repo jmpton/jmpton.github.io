@@ -10,10 +10,12 @@
 <meta property="og:locale" content="en_US" />
 <meta name="description" content="ROP Emporium ret2csu" />
 <meta property="og:description" content="ROP Emporium ret2csu" />
+<link rel="canonical" href="http://localhost:4000/series/rop_emporium/ropemporium-ret2csu/" />
+<meta property="og:url" content="http://localhost:4000/series/rop_emporium/ropemporium-ret2csu/" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2020-05-07T00:00:00+02:00" />
 <script type="application/ld+json">
-{"@type":"BlogPosting","headline":"08_ret2csu","dateModified":"2020-05-07T00:00:00+02:00","datePublished":"2020-05-07T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/rop_emporium/ropemporium-ret2csu/"},"url":"/series/rop_emporium/ropemporium-ret2csu/","author":{"@type":"Person","name":"silma"},"description":"ROP Emporium ret2csu","@context":"https://schema.org"}</script>
+{"@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/series/rop_emporium/ropemporium-ret2csu/"},"url":"http://localhost:4000/series/rop_emporium/ropemporium-ret2csu/","headline":"08_ret2csu","dateModified":"2020-05-07T00:00:00+02:00","datePublished":"2020-05-07T00:00:00+02:00","description":"ROP Emporium ret2csu","author":{"@type":"Person","name":"silma"},"@context":"https://schema.org"}</script>
 <!-- End Jekyll SEO tag -->
 <link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
 <body>
@@ -38,7 +40,7 @@
 
 <h2 id="function-pwnme">Function <em>pwnme()</em></h2>
 
-<p>As usual, the stack buffer expects an input of up to 0x20 bytes, but <em>_fget()</em> allows a much onger one:</p>
+<p>As usual, the stack buffer expects an input of up to 0x20 bytes, but <em>_fget()</em> allows a much longer one:</p>
 <div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">0</span><span class="nf">x000000000040071C</span>    <span class="nv">lea</span>     <span class="nb">rax</span><span class="p">,</span> <span class="p">[</span><span class="nb">rbp</span><span class="o">+</span><span class="nv">input_buffer</span><span class="p">]</span>
 <span class="err">0</span><span class="nf">x0000000000400720</span>    <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="mh">20h</span>        <span class="c1">; n</span>
 <span class="err">0</span><span class="nf">x0000000000400725</span>    <span class="nv">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="mi">0</span>          <span class="c1">; c</span>
