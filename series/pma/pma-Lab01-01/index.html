@@ -10,12 +10,11 @@
 <meta property="og:locale" content="en_US" />
 <meta name="description" content="Practical Malware Analysis Lab01-01" />
 <meta property="og:description" content="Practical Malware Analysis Lab01-01" />
-<link rel="canonical" href="http://localhost:4000/series/pma/pma-Lab01-01/" />
-<meta property="og:url" content="http://localhost:4000/series/pma/pma-Lab01-01/" />
+<meta property="og:site_name" content="Silma’s blog" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2020-04-05T00:00:00+02:00" />
 <script type="application/ld+json">
-{"@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/series/pma/pma-Lab01-01/"},"url":"http://localhost:4000/series/pma/pma-Lab01-01/","headline":"Lab01-01","dateModified":"2020-04-05T00:00:00+02:00","datePublished":"2020-04-05T00:00:00+02:00","description":"Practical Malware Analysis Lab01-01","author":{"@type":"Person","name":"silma"},"@context":"https://schema.org"}</script>
+{"@type":"BlogPosting","headline":"Lab01-01","dateModified":"2020-04-05T00:00:00+02:00","datePublished":"2020-04-05T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"/series/pma/pma-Lab01-01/"},"url":"/series/pma/pma-Lab01-01/","author":{"@type":"Person","name":"silma"},"description":"Practical Malware Analysis Lab01-01","@context":"https://schema.org"}</script>
 <!-- End Jekyll SEO tag -->
 <link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
 <body>
@@ -64,7 +63,7 @@ The malicious <a href="#exe_analysis">EXE</a>:</p>
   <li><a href="#rebuild_dll">Rebuilds</a> the export table of the malicious DLL;</li>
   <li><a href="#filesystem_alteration">Modifies</a> part of the filesystem, so the malicious DLL is loaded when executables from the folder <strong>C:\Windows\System32\</strong> folder are executed;<br />
 The malicious <a href="#dll_analysis">DLL</a>:</li>
-  <li><a href="#mutex">Creates</a> a mutex named <strong>SADFHUHF</strong>;</li>
+  <li><a href="#mutex">Creates</a> a mutex named “<strong>SADFHUHF</strong>”;</li>
   <li><a href="#socket">Opens</a> a socket to <strong>127.26.152.13:80</strong> an sends a “<em>hello</em>” beacon;</li>
   <li><a href="#commands">Processes</a> received commands.</li>
 </ul>
@@ -790,7 +789,7 @@ Then, a pointer to the name of the DLL is retrieved from the value of the field 
 
 
     </main><footer>
-  
+  Original theme by <a href=https://github.com/b2a3e8/jekyll-theme-console>b2a3e8</a>
 </footer>
 </div>
   </body>
