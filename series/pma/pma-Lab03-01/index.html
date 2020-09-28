@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Lab03-01</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v4.0.0" />
+<meta property="og:title" content="Lab03-01" />
+<meta name="author" content="silma" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Practical Malware Analysis Lab03-01" />
+<meta property="og:description" content="Practical Malware Analysis Lab03-01" />
+<link rel="canonical" href="http://localhost:4000/series/pma/pma-Lab03-01/" />
+<meta property="og:url" content="http://localhost:4000/series/pma/pma-Lab03-01/" />
+<meta property="og:site_name" content="Silma’s blog" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-05-11T00:00:00+02:00" />
+<script type="application/ld+json">
+{"@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/series/pma/pma-Lab03-01/"},"url":"http://localhost:4000/series/pma/pma-Lab03-01/","headline":"Lab03-01","dateModified":"2020-05-11T00:00:00+02:00","datePublished":"2020-05-11T00:00:00+02:00","description":"Practical Malware Analysis Lab03-01","author":{"@type":"Person","name":"silma"},"@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/</a></li><li><a href="/writeups.html">writeups</a></li><li><a href="/series.html">series</a></li><li><a href="/cheatsheets.html">cheatsheets</a></li><li><a href="/about.html">about</a></li></ul>
+  </div>
+</header>
+<main>
+      <h1 id="practical-malware-analysis-lab03-01">Practical Malware Analysis Lab03-01</h1>
+<p><br /></p>
+
+<p><strong>Tools:</strong> IDA Free 7.0, x64dbg, miasm (optional)
+<strong>IDA database:</strong> <a href="/assets/series/pma/Lab03-01.i64">Lab03-01.i64</a><br />
+<a href=""></a></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Size</th>
+      <th>MD5</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lab03-01.exe</td>
+      <td>07 KB</td>
+      <td>d537acb8f56a1ce206bc35cf8ff959c0</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+<h2 id="overview">Overview</h2>
+
+<p>A malware implementing a little bit of obuscation, import by hash and not-so-common cryptography. It relies on 2 stack buffers to manipulate most of its data, so keeping track of what is written and where it’s written makes the analysis a lot easier. Writeup breaks down:</p>
+
+<ul>
+  <li><a href="#obf">Obfuscation</a></li>
+  <li><a href="#scratchpad">Stack buffers</a></li>
+  <li><a href="#imports">Imports resolution</a></li>
+  <li><a href="#install">Installation</a></li>
+  <li><a href="#network">Network</a></li>
+  <li><a href="#end">Closing words</a></li>
+</ul>
+
+<h2 id="obf">Obfuscation tricks</h2>
+
+<h3 id="the-callcall-trick">The call/call trick</h3>
+
+<p>Pushing arguments without using the <strong>push</strong> instruction. For example:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401228</span>                 <span class="nf">call</span>    <span class="nv">near</span> <span class="nv">ptr</span> <span class="nv">loc_401235</span><span class="o">+</span><span class="mi">1</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">D</span>                 <span class="nv">popa</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">E</span>                 <span class="nv">db</span>      <span class="mh">64h</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">E</span>                 <span class="nv">jbe</span>     <span class="nv">short</span> <span class="nv">loc_401292</span>
+<span class="nl">.data:</span><span class="err">00401231</span>                 <span class="nf">jo</span>      <span class="nv">short</span> <span class="nv">loc_40129C</span>
+<span class="nl">.data:</span><span class="err">00401233</span>                 <span class="nf">xor</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">edx</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00401235</span>
+<span class="nl">.data:</span><span class="err">00401235</span> <span class="nl">loc_401235:</span>
+<span class="nl">.data:</span><span class="err">00401235</span>                 <span class="nf">add</span>     <span class="nb">bh</span><span class="p">,</span> <span class="nb">bh</span>
+</code></pre></div></div>
+<p>Let’s clean what IDA shows us: at address <strong>0x401235</strong>, press <strong>d</strong> to say data (this allows us to operate on a byte-level granularity), and at address <strong>0x401236</strong> press <strong>c</strong> to say it’s code. The results is:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401228</span>                 <span class="nf">call</span>    <span class="nv">loc_401236</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">D</span>                 <span class="nv">popa</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">E</span>                 <span class="nv">db</span>      <span class="mh">64h</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">E</span>                 <span class="nv">jbe</span>     <span class="nv">short</span> <span class="nv">loc_401292</span>
+<span class="nl">.data:</span><span class="err">00401231</span>                 <span class="nf">jo</span>      <span class="nv">short</span> <span class="nv">loc_40129C</span>
+<span class="nl">.data:</span><span class="err">00401233</span>                 <span class="nf">xor</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">edx</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00401235</span>                 <span class="kd">db</span> <span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">00401236</span> <span class="nl">loc_401236:</span>
+<span class="nl">.data:</span><span class="err">00401236</span>                 <span class="nf">call</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">var_EDF</span><span class="p">]</span>
+</code></pre></div></div>
+<p>So, basically it’s 2 calls being executed. Between these 2 calls is in fact not code but a string. Got to address <strong>0x40122D</strong>, press <strong>alt+a</strong> and select <strong>C-style</strong>. This makes appear the null-terminated string “<em>advapi32</em>” (if it doesn’t work, select all the lines having printable ascii char and retry <strong>alt+a</strong>):</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401228</span>                 <span class="nf">call</span>    <span class="nv">loc_401236</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">D</span> <span class="nv">aAdvapi32</span>       <span class="nv">db</span> <span class="s">'advapi32'</span><span class="p">,</span><span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">00401236</span> <span class="nl">loc_401236:</span>
+<span class="nl">.data:</span><span class="err">00401236</span>                 <span class="nf">call</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">var_EDF</span><span class="p">]</span>
+</code></pre></div></div>
+<p>So, the first call is used to push the address of the string <strong>advapi32</strong> on the stack; and this string is a parameter for the second call.</p>
+
+<p>This trick is used a few time by the sample and can be handled by hand. However, a heavier use would have required some automation. On a personal note, I automated this part using a slightly modified version of <a href="https://github.com/cea-sec/miasm/blob/6303723ecf1f42bf5026d5b5e72ce06b93b66078/example/disasm/full.py">miasm disasm example</a>. However I’m still learning to use this framework and not very proud of my code, so I keep it private for now.</p>
+
+<h3 id="the-callpop-trick">The call/pop trick</h3>
+
+<p>A trick similar to the previous one, except that the destination of the call is a <strong>pop</strong> instruction. This allows to get a pointer to the data stored just after the call. For example:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401296</span>      <span class="nf">call</span>    <span class="nv">push4</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">B</span>      <span class="nv">dd</span> <span class="mh">20B943E7h</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">F</span>      <span class="nv">dw</span> <span class="mh">0ABBh</span>
+<span class="nl">.data:</span><span class="err">004012</span><span class="nf">A1</span>      <span class="nv">dw</span> <span class="mh">85h</span>
+<span class="nl">.data:</span><span class="err">004012</span><span class="nf">A3</span>      <span class="nv">dd</span> <span class="mh">68624A9Dh</span>
+<span class="nl">.data:</span><span class="err">004012</span><span class="nf">A7</span>      <span class="nv">dw</span> <span class="mh">0ABBh</span>
+<span class="nl">.data:</span><span class="err">004012</span><span class="nf">A9</span>      <span class="nv">dw</span> <span class="mh">0A1h</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">EB</span>      <span class="nv">dd</span> <span class="mh">54D8615Ah</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">EF</span>      <span class="nv">dw</span> <span class="mh">0ABBh</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F1</span>      <span class="nv">dw</span> <span class="mh">0CFCh</span> 
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F3</span>      <span class="nv">dd</span> <span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F7</span> <span class="nv">push4</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F7</span>      <span class="nv">pop</span>     <span class="nb">edi</span>
+</code></pre></div></div>
+
+<h3 id="the-pushpop-trick">The push/pop trick</h3>
+
+<p>Moving source to destination without using the <strong>mov</strong> instruction. Example:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401207</span>      <span class="nf">push</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">8</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">0040120</span><span class="nf">A</span>      <span class="nv">pop</span>     <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">4C1h</span><span class="p">]</span>
+</code></pre></div></div>
+
+<h3 id="importbyhash">Import by hash</h3>
+
+<p>A clasical obfuscation trick seen in many malwares: the aim is to use precomputed hashes instead of plaintext API and DLL names, in order to hinder static analysis. For API names, the malware performs a dictionary attack against the export table of the relevant DLL. For DLL names, it performs the dictionary attack against filenames in the System32 folder.</p>
+
+<p>The function implementing the resolution of imports is at address <strong>0x400A70</strong>, below is the prototype I came with:</p>
+<pre><code class="language-C">DWORD
+ImportByHash(
+    DWORD arg0,
+    DWORD dll_imagebase,
+    DWWORD api_hash
+);
+</code></pre>
+
+<p>Details on <a href="#imports">imports resolution</a> are given later.</p>
+
+<p>There are several ways to retrieve the API name matching a given hash. In this case I built a list containing all the hashes I cound find in the binary and then, rather than reimplementing the hashing algorithm, I let the <a href="https://github.com/cea-sec/miasm/blob/c37cec913ac7724f20b0da3e2ef66ae45bbb54c4/example/jitter/x86_32.py">miam jitter</a> do all the dirty work. It starts as follow:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1"># Dict attack CRC32 of API names.
+</span>    <span class="c1"># Set flag to True to retrieve hashes and dump results to json file
+</span>    <span class="c1">#
+</span>    <span class="c1"># Directory "dll_list" contains text files with API names:
+</span>    <span class="c1">#   head ../dll_list/sysdlls.kernel32.txt
+</span>    <span class="c1">#   ActivateActCtx
+</span>    <span class="c1">#   AddAtomA
+</span>    <span class="c1">#   AddAtomW
+</span>    <span class="c1">#   ...
+</span>    <span class="c1"># "path" is work directory
+</span>    <span class="c1"># "raw" is the binary sample (byte object)
+</span>    <span class="n">dict_attack</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="k">if</span> <span class="n">dict_attack</span><span class="p">:</span>
+        <span class="n">api_names</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="s">"venv/dll_list"</span><span class="p">)</span> <span class="c1"># dirty
+</span>        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">api_names</span><span class="p">):</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">jit_snippet</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">hashes_to_find</span><span class="o">=</span><span class="n">api_hashes</span><span class="p">,</span> <span class="n">api_list</span><span class="o">=</span><span class="n">api_names</span><span class="p">)</span>
+
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s">"api2hash.json"</span><span class="p">,</span> <span class="s">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+
+    <span class="c1"># Pretty print hash2api
+</span>    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s">"api2hash.json"</span><span class="p">,</span> <span class="s">"r"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">api_name</span><span class="p">,</span> <span class="n">crc32</span> <span class="ow">in</span> <span class="n">j</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"{}</span><span class="se">\t</span><span class="s">{}"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="nb">hex</span><span class="p">(</span><span class="n">crc32</span><span class="p">),</span> <span class="n">api_name</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="bp">True</span>
+</code></pre></div></div>
+
+<p>Below is the jitter code. I’m not very familiar with miasm API, so don’t hesitate to ping me for improvements. Note we focus on the hashing part of <strong>ImportByHash()</strong> rather than on the whole function:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">jitter_callback_start</span><span class="p">(</span><span class="n">sb</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"[+] Hash computation starts"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">True</span>
+
+<span class="k">def</span> <span class="nf">jitter_callback_end</span><span class="p">(</span><span class="n">sb</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">sb</span><span class="o">.</span><span class="n">cpu</span><span class="o">.</span><span class="n">EAX</span>
+    <span class="n">sb</span><span class="o">.</span><span class="n">run</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="n">sb</span><span class="o">.</span><span class="n">pc</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+<span class="k">def</span> <span class="nf">jit_snippet</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">hashes_to_find</span><span class="p">,</span> <span class="n">api_list</span><span class="p">):</span>
+
+    <span class="n">start</span> <span class="o">=</span> <span class="mh">0x400aef</span>
+    <span class="n">end</span> <span class="o">=</span> <span class="mh">0x400b29</span>
+    <span class="n">name2hash</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">for</span> <span class="nb">file</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">api_list</span><span class="p">):</span>
+
+        <span class="n">file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">api_list</span><span class="p">,</span> <span class="nb">file</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s">"r"</span><span class="p">)</span>
+        <span class="n">api_names</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+
+        <span class="k">print</span><span class="p">(</span><span class="s">"[*] Parsing file {} ({} names)"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="nb">file</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">api_names</span><span class="p">)))</span>
+
+        <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">api_names</span><span class="p">:</span>
+
+            <span class="n">l</span> <span class="o">=</span> <span class="n">l</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">'</span><span class="se">\n</span><span class="s">'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">str_to_hash</span> <span class="o">=</span> <span class="n">l</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">"utf8"</span><span class="p">)</span>
+            <span class="n">str_to_hash</span> <span class="o">+=</span> <span class="n">b</span><span class="s">'</span><span class="se">\x00</span><span class="s">'</span>
+
+            <span class="n">sb</span> <span class="o">=</span> <span class="n">Machine</span><span class="p">(</span><span class="s">"x86_32"</span><span class="p">)</span><span class="o">.</span><span class="n">jitter</span><span class="p">()</span>
+            <span class="n">sb</span><span class="o">.</span><span class="n">init_stack</span><span class="p">()</span>
+            <span class="c1"># print(sb.stack_base)
+</span>
+            <span class="c1"># Dummy push for stack align (pop edx at 0x400b26);
+</span>            <span class="c1"># in original code, it's the hash to find.
+</span>            <span class="n">sb</span><span class="o">.</span><span class="n">push_uint32_t</span><span class="p">(</span><span class="mh">0x00c0ffee</span><span class="p">)</span>
+
+            <span class="c1">#sb.add_breakpoint(start, jitter_callback_start)
+</span>            <span class="n">sb</span><span class="o">.</span><span class="n">add_breakpoint</span><span class="p">(</span><span class="n">end</span><span class="p">,</span> <span class="n">jitter_callback_end</span><span class="p">)</span>
+
+            <span class="n">sb</span><span class="o">.</span><span class="n">vm</span><span class="o">.</span><span class="n">add_memory_page</span><span class="p">(</span><span class="mh">0x400000</span><span class="p">,</span> <span class="n">PAGE_READ</span> <span class="o">|</span> <span class="n">PAGE_WRITE</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span> <span class="c1"># code
+</span>            <span class="n">sb</span><span class="o">.</span><span class="n">vm</span><span class="o">.</span><span class="n">add_memory_page</span><span class="p">(</span><span class="mh">0x500000</span><span class="p">,</span> <span class="n">PAGE_READ</span> <span class="o">|</span> <span class="n">PAGE_WRITE</span><span class="p">,</span> <span class="n">str_to_hash</span><span class="p">)</span> <span class="c1"># data
+</span>
+            <span class="c1">#sb.vm.set_mem(0x500000, str_to_hash)
+</span>
+            <span class="n">sb</span><span class="o">.</span><span class="n">cpu</span><span class="o">.</span><span class="n">EAX</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">sb</span><span class="o">.</span><span class="n">cpu</span><span class="o">.</span><span class="n">EBX</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">sb</span><span class="o">.</span><span class="n">cpu</span><span class="o">.</span><span class="n">ECX</span> <span class="o">=</span> <span class="mh">0xffffffff</span>
+            <span class="n">sb</span><span class="o">.</span><span class="n">cpu</span><span class="o">.</span><span class="n">EDX</span> <span class="o">=</span> <span class="mh">0xffffffff</span>
+            <span class="n">sb</span><span class="o">.</span><span class="n">cpu</span><span class="o">.</span><span class="n">EDI</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">str_to_hash</span><span class="p">)</span>
+            <span class="n">sb</span><span class="o">.</span><span class="n">cpu</span><span class="o">.</span><span class="n">ESI</span> <span class="o">=</span> <span class="mh">0x500000</span> <span class="c1"># string to hash
+</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">sb</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">addr</span><span class="o">=</span><span class="n">start</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">hashes_to_find</span><span class="p">:</span>
+                <span class="n">api_name</span> <span class="o">=</span> <span class="n">str_to_hash</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">"utf8"</span><span class="p">)</span>
+                <span class="n">name2hash</span><span class="p">[</span><span class="n">api_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">result</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">"[+] Hash match {}:{}"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="nb">hex</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="n">api_name</span><span class="p">))</span>
+
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="n">r</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">name2hash</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">r</span>
+</code></pre></div></div>
+
+<p>The json containing the results is available <a href="/assets/series/pma/Lab03-01_api2hash.json">here</a>.</p>
+
+<h2 id="scratchpad">Stack buffers</h2>
+
+<p>The code starts by calling address <strong>0x400400</strong>, where 2 buffers a initialized on the stack: the first at <strong>ebp-0xf7c</strong> and the second at <strong>ebp-0xfc0</strong>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400400</span>      <span class="nf">push</span>    <span class="nb">ebp</span>
+<span class="nl">.data:</span><span class="err">00400401</span>      <span class="nf">mov</span>     <span class="nb">ebp</span><span class="p">,</span> <span class="nb">esp</span>
+<span class="nl">.data:</span><span class="err">00400403</span>      <span class="nf">add</span>     <span class="nb">esp</span><span class="p">,</span> <span class="mh">0FFFFF030h</span> <span class="c1">; sub esp, 0xfd0</span>
+<span class="nl">.data:</span><span class="err">00400409</span>      <span class="nf">pusha</span>
+<span class="nl">.data:</span><span class="err">0040040</span><span class="nf">A</span>      <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">0040040</span><span class="nf">C</span>      <span class="nv">lea</span>     <span class="nb">edi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0F7Ch</span><span class="p">]</span> <span class="c1">; buffer 1</span>
+<span class="nl">.data:</span><span class="err">00400412</span>      <span class="nf">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mh">0F74h</span>
+<span class="nl">.data:</span><span class="err">00400417</span>      <span class="nf">rep</span> <span class="nv">stosb</span>
+<span class="nl">.data:</span><span class="err">00400419</span>      <span class="nf">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">0040041</span><span class="nf">B</span>      <span class="nv">lea</span>     <span class="nb">edi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0FC0h</span><span class="p">]</span> <span class="c1">; buffer 2</span>
+<span class="nl">.data:</span><span class="err">00400421</span>      <span class="nf">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mh">44h</span>
+<span class="nl">.data:</span><span class="err">00400426</span>      <span class="nf">rep</span> <span class="nv">stosb</span>
+</code></pre></div></div>
+
+<p>With the help of a debugger (or not), we can draw the following layout of the stack:</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    ebp-0xfc0   ebp-0xf7c                       ebp
+    |           |                               |
+    v           v                               v
+    +-----------+------------//-----+-----+-----+-----------+-----------+
+    | buffer 2  | buffer 1          | dw1 | dw2 | saved ebp | saved eip |
+    +-----------+------------//-----+-----------+-----------+-----------+
+lower addresses                                                 higher adresses
+</code></pre></div></div>
+
+<p>Across the code, data will be saved, accessed and manipulated in these two buffers. Many of these uses rely on offsets from <strong>ebp-0xf7c</strong> (“base address of buffer 1”), so keeping this layout in mind would be useful. In addition, IDA allows the creation of custom structures, so we can create one of size <strong>0xf7c</strong> bytes to represents buffer 1 and fill it as things progress.</p>
+<ul>
+  <li>Open the “Structures” subview (“view -&gt; Open subviews -&gt; Structures”)</li>
+  <li>Press <strong>Ins</strong> to create a new structure</li>
+  <li>Press <strong>d</strong> to create a new field</li>
+  <li>Press <strong>Ctrl+e</strong> and expand the structure up to 0xf7c bytes</li>
+  <li>If necessary, press <strong>u</strong> to undefine a field; it will be deleted if all other fields below it are also undefined</li>
+</ul>
+
+<p>Then, each time a register (spoiler: it will be <strong>ESI</strong>) points to the base of buffer 1, we’ll just have to press <strong>t</strong> to synchronize the disassembly with the content of the updated structure.</p>
+
+<h2 id="imports">Imports resolution</h2>
+
+<h3 id="getting-and-saving-imagebase-of-kernelbasedll">Getting and saving imagebase of kernelbase.dll</h3>
+
+<p>As stated in the <a href="#importbyhash">obfuscation</a> section, the function implementing the resolution of imports is at address <strong>0x400A70</strong> and has the following prototype:</p>
+
+<pre><code class="language-C">DWORD
+ImportByHash(
+    DWORD arg0,
+    DWORD dll_imagebase,
+    DWWORD api_hash
+);
+</code></pre>
+<p>Before calling this function for the first time, the malware retrieves the imagebase of <strong>kernelbase.dll</strong> from its PEB:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">004011</span><span class="nf">FA</span>      <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nv">large</span> <span class="nb">fs</span><span class="p">:</span><span class="mh">30h</span>   <span class="c1">; PEB</span>
+<span class="nl">.data:</span><span class="err">00401200</span>      <span class="nf">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mh">0Ch</span><span class="p">]</span>      <span class="c1">; PEB_LDR_DATA</span>
+<span class="nl">.data:</span><span class="err">00401203</span>      <span class="nf">mov</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mh">1Ch</span><span class="p">]</span>      <span class="c1">; InInitializationOrderModuleList (ListEntry)</span>
+<span class="nl">.data:</span><span class="err">00401206</span>      <span class="nf">lodsd</span>   <span class="c1">; load esi to eax (ListEntry.Flink =&gt; eax = LDR_DATA_TABLE_ENTRY+0x10)</span>
+<span class="nl">.data:</span><span class="err">00401207</span>      <span class="nf">push</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mi">8</span><span class="p">]</span>   <span class="c1">; LDR_DATA_TABLE_ENTRY + 0x10 + 8 -&gt; DllBase</span>
+<span class="nl">.data:</span><span class="err">0040120</span><span class="nf">A</span>      <span class="nv">pop</span>     <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">4C1h</span><span class="p">]</span><span class="c1">; save imagebase</span>
+<span class="nl">.data:</span><span class="err">00401210</span>      <span class="nf">push</span>    <span class="mh">4134D1ADh</span>           <span class="c1">; API hash</span>
+<span class="nl">.data:</span><span class="err">0040121</span><span class="nf">B</span>      <span class="nv">push</span>    <span class="mi">0</span>                   <span class="c1">; unknown parameter</span>
+<span class="nl">.data:</span><span class="err">0040121</span><span class="nf">D</span>      <span class="nv">call</span>    <span class="nv">ImportByHash</span>        <span class="c1">; </span>
+</code></pre></div></div>
+
+<p>To find the offset where the imagebase is saved, we just do the math according to the stack layout drew <a href="#scratchpad">previously</a>:  <strong>0xf7c-0x4c1=0xabb</strong>, so:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>; custom struct 0xf7c
+...
+00000AB9                 db ? ; undefined
+00000ABA                 db ? ; undefined
+00000ABB imagebase_kernelbase dd ?  
+...
+</code></pre></div></div>
+
+<h3 id="parsing-the-export-table-of-kernelbasedll">Parsing the export table of kernelbase.dll</h3>
+
+<p>The beginning of the function <strong>ImportByHash()</strong> contains offsets that <a href="/series/2020-04-05-pma-Lab01-01.md/#rebuild_dll">look familiar</a>: <strong>base+0x3C</strong>, <strong>PE+0x78</strong>, <strong>ExportTable+0x18</strong>, etc. It’s all about having pointers to <strong>ExportAddressTable</strong>, <strong>ExportNamePointerTable</strong> and <strong>ExportOrdinalTable</strong>.
+Once these pointers are initialized, the first API name is retrieved from the <strong>ExportNamePointerTable</strong> and its hash is computed:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; esi -&gt; current api name</span>
+<span class="c1">; edi = api name length</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AEA</span>      <span class="nv">xor</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">ecx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AEC</span>      <span class="nv">dec</span>     <span class="nb">ecx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AED</span>      <span class="nv">mov</span>     <span class="nb">edx</span><span class="p">,</span> <span class="nb">ecx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AEF</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AEF</span> <span class="nv">next_char</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AEF</span>      <span class="nv">xor</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>    <span class="c1">; start of code to emulate</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AF1</span>      <span class="nv">xor</span>     <span class="nb">ebx</span><span class="p">,</span> <span class="nb">ebx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AF3</span>      <span class="nv">lodsb</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AF4</span>      <span class="nv">xor</span>     <span class="nb">al</span><span class="p">,</span> <span class="nb">cl</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AF6</span>      <span class="nv">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="nb">ch</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AF8</span>      <span class="nv">mov</span>     <span class="nb">ch</span><span class="p">,</span> <span class="nb">dl</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AFA</span>      <span class="nv">mov</span>     <span class="nb">dl</span><span class="p">,</span> <span class="nb">dh</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AFC</span>      <span class="nv">mov</span>     <span class="nb">dh</span><span class="p">,</span> <span class="mi">8</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AFE</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AFE</span> <span class="nv">loop_8</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">AFE</span>      <span class="nv">shr</span>     <span class="nb">bx</span><span class="p">,</span> <span class="mi">1</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B01</span>      <span class="nv">rcr</span>     <span class="nb">ax</span><span class="p">,</span> <span class="mi">1</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B04</span>      <span class="nv">jnb</span>     <span class="nv">short</span> <span class="nv">loc_400B0F</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B06</span>      <span class="nv">xor</span>     <span class="nb">ax</span><span class="p">,</span> <span class="mh">8320h</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B0A</span>      <span class="nv">xor</span>     <span class="nb">bx</span><span class="p">,</span> <span class="mh">0EDB8h</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B0F</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B0F</span> <span class="nv">loc_400B0F</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B0F</span>      <span class="nv">dec</span>     <span class="nb">dh</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B11</span>      <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">loop_8</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B13</span>      <span class="nv">xor</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B15</span>      <span class="nv">xor</span>     <span class="nb">edx</span><span class="p">,</span> <span class="nb">ebx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B17</span>      <span class="nv">dec</span>     <span class="nb">edi</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B18</span>      <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">next_char</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B1A</span>      <span class="nv">not</span>     <span class="nb">edx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B1C</span>      <span class="nv">not</span>     <span class="nb">ecx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B1E</span>      <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="nb">edx</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B20</span>      <span class="nv">rol</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mh">10h</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B23</span>      <span class="nv">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="nb">cx</span>
+</code></pre></div></div>
+
+<p>The resulting hash is compared to the target hash (third argument of the function) at address <strong>0x400B27</strong>:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400</span><span class="nf">B26</span>      <span class="nv">pop</span>     <span class="nb">edx</span>                 <span class="c1">; arg8 (hash). Dummy "push 0x00c0ffee" in emulation</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B27</span>      <span class="nv">cmp</span>     <span class="nb">edx</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B29</span>      <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">hash_match</span>    <span class="c1">; end of code to emulate</span>
+</code></pre></div></div>
+
+<p>If hashes don’t match the different pointers are updated and the next API name is hashed, else the address of the API is computed from the <strong>ExportOrdinalTable</strong> and the <strong>ExportAddressTable</strong>. This is exactly the same logic seen in the <a href="/cheatsheets/pe/#export_table">cheatsheet</a> example:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400</span><span class="nf">B35</span> <span class="nv">hash_match</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B35</span>      <span class="nv">pop</span>     <span class="nb">esi</span>             <span class="c1">; restore</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B36</span>      <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">i</span><span class="p">]</span>    <span class="c1">; index of matching entry in ExportNamePointerTable</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B39</span>      <span class="nv">shl</span>     <span class="nb">eax</span><span class="p">,</span> <span class="mi">1</span>          <span class="c1">; sizeof(WORD)</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B3B</span>      <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">ExportOrdinalTable</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B3E</span>      <span class="nv">xor</span>     <span class="nb">esi</span><span class="p">,</span> <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B40</span>      <span class="nv">xchg</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B41</span>      <span class="nv">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="p">]</span>       <span class="c1">; get ordinal (ordinal = index used in EAT)</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B44</span>      <span class="nv">shl</span>     <span class="nb">ax</span><span class="p">,</span> <span class="mi">2</span>           <span class="c1">; EAT idx (sizeof(DWORD))</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B48</span>      <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">ExportAddressTable</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B4B</span>      <span class="nv">xchg</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B4C</span>      <span class="nv">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="p">]</span>      <span class="c1">; RVA API</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B4E</span>      <span class="nv">add</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nb">dl</span><span class="nv">lbase</span><span class="p">]</span> <span class="c1">; addr API</span>
+</code></pre></div></div>
+<p>So, adress <strong>0x400B4E</strong> is a cool candidate breakpoint for dynamic analysis (x64dbg, for example, will automatically give the mapping API name &lt;-&gt; API address in eax).
+Let’s fire up the debugger to get a quick answer, and we see the first call to <strong>ImportByHash()</strong> resolves to <strong>LoadLibraryA</strong> (surprise!).</p>
+
+<h3 id="loading-more-dlls">Loading more DLLs</h3>
+
+<p>Back from the first call to <strong>ImportByHash()</strong>, the malware saves the address of <strong>LoadLibraryA()</strong>:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">0040121</span><span class="nf">D</span>      <span class="nv">call</span>    <span class="nv">ImportByHash</span>
+<span class="nl">.data:</span><span class="err">00401222</span>      <span class="nf">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0EDFh</span><span class="p">],</span> <span class="nb">eax</span> <span class="c1">; LoadLibraryA</span>
+</code></pre></div></div>
+
+<p><strong>LoadLibraryA()</strong> is used to load the following libraries: <strong>advapi32.dll</strong>, <strong>ntdll</strong>, <strong>user32</strong>, <strong>advpack</strong>, and (later) <strong>ws32_2</strong>. The snippet below illustrate the loading of <strong>advapi32.dll</strong> (note the use of the <a href="#obf">call/call</a> trick):</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401228</span>      <span class="nf">call</span>    <span class="nv">push1</span>
+<span class="nl">.data:</span><span class="err">00401228</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">0040122</span><span class="nf">D</span> <span class="nv">aAdvapi32</span>       <span class="nv">db</span> <span class="s">'advapi32'</span><span class="p">,</span><span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">00401236</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">00401236</span> <span class="nl">push1:</span>
+<span class="nl">.data:</span><span class="err">00401236</span>      <span class="nf">call</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0EDFh</span><span class="p">]</span> <span class="c1">; LoadLibraryA</span>
+<span class="nl">.data:</span><span class="err">0040123</span><span class="nf">C</span>      <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">4A9h</span><span class="p">],</span> <span class="nb">eax</span>
+</code></pre></div></div>
+
+<p>To compute the destination offset, just recall the example given for <a href="#imports">kernelbase</a>.</p>
+
+<h3 id="imports_customstructs">Solving more imports: use of custom structures</h3>
+
+<p>Some resolutions rely on the use of custom structures, for example between addresses <strong>0x401296</strong> and <strong>0x40141D</strong>. First, the call/pop trick is used so <strong>EDI</strong> points to what seems gibberish data at first sight:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401296</span>      <span class="nf">call</span>    <span class="nv">push4</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">B</span>      <span class="nv">dd</span> <span class="mh">20B943E7h</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">F</span>      <span class="nv">dw</span> <span class="mh">0ABBh</span>
+<span class="nl">.data:</span><span class="err">004012</span><span class="nf">A1</span>      <span class="nv">dw</span> <span class="mh">85h</span> 
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F7</span> <span class="nv">push4</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F7</span>      <span class="nv">pop</span>     <span class="nb">edi</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F8</span>      <span class="nv">lea</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0F7Ch</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>However, looking at how the data are used in the following loop we deduce it’s an array of custom structures:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">004013</span><span class="nf">F8</span>      <span class="nv">lea</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0F7Ch</span><span class="p">]</span>        <span class="c1">; esi -&gt; base of buffer 1</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">FE</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">FE</span> <span class="nv">get_next_api</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">FE</span>      <span class="nv">cmp</span>     <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="p">],</span> <span class="mi">0</span>      <span class="c1">; is end?</span>
+<span class="nl">.data:</span><span class="err">00401401</span>      <span class="nf">jz</span>      <span class="nv">short</span> <span class="nv">end_table</span>
+<span class="nl">.data:</span><span class="err">00401403</span>      <span class="nf">movzx</span>   <span class="nb">eax</span><span class="p">,</span> <span class="kt">word</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span>   <span class="c1">; ax = offset_1</span>
+<span class="nl">.data:</span><span class="err">00401407</span>      <span class="nf">push</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="p">]</span>         <span class="c1">; API hash</span>
+<span class="nl">.data:</span><span class="err">00401409</span>      <span class="nf">push</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="nb">esi</span><span class="p">]</span>     <span class="c1">; buffer1[offset_1] = dllbase</span>
+<span class="nl">.data:</span><span class="err">0040140</span><span class="nf">C</span>      <span class="nv">push</span>    <span class="mi">0</span>                       <span class="c1">; unknown parameter </span>
+<span class="nl">.data:</span><span class="err">0040140</span><span class="nf">E</span>      <span class="nv">call</span>    <span class="nv">ImportByHash</span>
+<span class="nl">.data:</span><span class="err">00401413</span>      <span class="nf">movzx</span>   <span class="nb">edx</span><span class="p">,</span> <span class="kt">word</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="o">+</span><span class="mi">6</span><span class="p">]</span>   <span class="c1">; dx = offset_2</span>
+<span class="nl">.data:</span><span class="err">00401417</span>      <span class="nf">mov</span>     <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="nb">esi</span><span class="p">],</span> <span class="nb">eax</span>          <span class="c1">; buffer1[offset_2] = api_address</span>
+<span class="nl">.data:</span><span class="err">0040141</span><span class="nf">A</span>      <span class="nv">add</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mi">8</span>                  <span class="c1">; next entry </span>
+<span class="nl">.data:</span><span class="err">0040141</span><span class="nf">D</span>      <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">get_next_api</span>
+</code></pre></div></div>
+
+<p>Hence we can improve the layout of the data by creating the following structure:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>00000000 CUSTOM_IID      struc ; (sizeof=0x8, mappedto_7)
+00000000                                         ; XREF: .data:0040129B/r
+00000000 api_hash        dd ?
+00000004 offset_to_dll_base dw ?
+00000006 offset_to_api_address dw ?
+00000008 CUSTOM_IID      ends
+</code></pre></div></div>
+
+<p>Then, selecting all the data and pressing <strong>*</strong> to make and array, we end up with:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00401296</span>      <span class="nf">call</span>    <span class="nv">push4</span>
+<span class="nl">.data:</span><span class="err">00401296</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">B</span> <span class="c1">; CUSTOM_IID</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">B</span>      <span class="nv">CUSTOM_IID</span> <span class="o">&lt;</span><span class="mh">20B943E7h</span><span class="p">,</span> <span class="mh">0ABBh</span><span class="p">,</span> <span class="mh">85h</span><span class="o">&gt;</span> <span class="c1">; hash, offset_dllbase, offset_dest</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">B</span>      <span class="nv">CUSTOM_IID</span> <span class="o">&lt;</span><span class="mh">68624A9Dh</span><span class="p">,</span> <span class="mh">0ABBh</span><span class="p">,</span> <span class="mh">0A1h</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040129</span><span class="nf">B</span>      <span class="nv">CUSTOM_IID</span> <span class="o">&lt;</span><span class="mh">0AC136BAh</span><span class="p">,</span> <span class="mh">0ABBh</span><span class="p">,</span> <span class="mh">0A5h</span><span class="o">&gt;</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F7</span> <span class="nv">push4</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F7</span>      <span class="nv">pop</span>     <span class="nb">edi</span>
+<span class="nl">.data:</span><span class="err">004013</span><span class="nf">F8</span>      <span class="nv">lea</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0F7Ch</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>Using the field “offset_dest” we can (although manually) fill part of the big “buffer1” structure by renaming the relevant fields with something like “addr_&lt;apiname&gt;”.</p>
+
+<p><a href="#network">Later in the code</a>, <strong>ws2_32</strong> imports are resolved using a similar approach:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; esi-&gt;base_buffer1</span>
+<span class="nl">.data:</span><span class="err">00400480</span>      <span class="nf">call</span>    <span class="nv">loc_40048C</span>
+<span class="nl">.data:</span><span class="err">00400480</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">00400485</span> <span class="nf">aWs232</span>   <span class="nv">db</span> <span class="s">'ws2_32'</span><span class="p">,</span><span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">0040048</span><span class="nf">C</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">0040048</span><span class="nf">C</span>
+<span class="nl">.data:</span><span class="err">0040048</span><span class="nf">C</span> <span class="nv">loc_40048C</span><span class="p">:</span>                             <span class="c1">; CODE XREF: Network+49↑p</span>
+<span class="nl">.data:</span><span class="err">0040048</span><span class="nf">C</span>      <span class="nv">pop</span>     <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">0040048</span><span class="nf">D</span>      <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">0040048</span><span class="nf">E</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.addr_LoadLibraryA</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400494</span>      <span class="nf">mov</span>     <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.imagebase_ws2_32</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">A</span>      <span class="nv">call</span>    <span class="nv">loc_4004D9</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">A</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span> <span class="c1">; CUSTOM_IID_2 CUSTOM_IID_2_0</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span> <span class="nv">CUSTOM_IID_2_0</span>  <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">8EB460E1h</span><span class="p">,</span> <span class="mi">1</span><span class="o">&gt;</span> <span class="c1">; api_hash, offset_to_dest</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">7C2941D1h</span><span class="p">,</span> <span class="mh">15h</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">65ECBB1Eh</span><span class="p">,</span> <span class="mh">19h</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">0EAED580Ch</span><span class="p">,</span> <span class="mh">1Dh</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">5F7E2D81h</span><span class="p">,</span> <span class="mi">5</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">377022BAh</span><span class="p">,</span> <span class="mh">0Dh</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">7A3CE88Ah</span><span class="p">,</span> <span class="mh">11h</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">1CC6CDC5h</span><span class="p">,</span> <span class="mi">9</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">0040049</span><span class="nf">F</span>                 <span class="nv">CUSTOM_IID_2</span> <span class="o">&lt;</span><span class="mh">492DDFD7h</span><span class="p">,</span> <span class="mh">99h</span><span class="o">&gt;</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">D5</span>                 <span class="nv">dd</span> <span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">D9</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">D9</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">D9</span> <span class="nv">loc_4004D9</span><span class="p">:</span>                             <span class="c1">; CODE XREF: Network+63↑p</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">D9</span>      <span class="nv">pop</span>     <span class="nb">edi</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">DA</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">DA</span> <span class="nv">solve_next_ws2_32_import</span><span class="p">:</span>               <span class="c1">; CODE XREF: Network+C1↓j</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">DA</span>      <span class="nv">cmp</span>     <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="p">],</span> <span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="kd">DD</span>      <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">end_array</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">DF</span>      <span class="nv">push</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">E1</span>      <span class="nv">push</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.imagebase_ws2_32</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">E7</span>      <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">E8</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_400a70_hash2api</span><span class="p">]</span> <span class="c1">; 0x400a70</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">EE</span>      <span class="nv">movzx</span>   <span class="nb">edx</span><span class="p">,</span> <span class="kt">word</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">edi</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">F2</span>      <span class="nv">mov</span>     <span class="p">[</span><span class="nb">edx</span><span class="o">+</span><span class="nb">esi</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">F5</span>      <span class="nv">add</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mi">6</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">F8</span>      <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nv">solve_next_ws2_32_import</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">FA</span> <span class="c1">; ---------------------------------------------------------------------------</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">FA</span>
+<span class="nl">.data:</span><span class="err">004004</span><span class="nf">FA</span> <span class="nv">end_array</span><span class="p">:</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>In addition to API addresses, the same kind of custom structures are used to save more data such as strings, function pointers and data pointers in buffer 1. See for example addresses <strong>0x401431</strong> and <strong>0x401595</strong>.</p>
+
+<h2 id="install">Malware installation: function 0x4017ba</h2>
+
+<p>After all these buffer-filling things, the malware reaches address <strong>0x4015f1</strong> and calls function <strong>0x4017ba</strong>:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">004015</span><span class="nf">F0</span>      <span class="nv">push</span>    <span class="nb">esi</span> <span class="c1">; buffer1</span>
+<span class="nl">.data:</span><span class="err">004015</span><span class="nf">F1</span>      <span class="nv">call</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0EA7h</span><span class="p">]</span> <span class="c1">; 0x4017ba: install malware</span>
+</code></pre></div></div>
+
+<p>Function <strong>0x4017ba</strong> performs installation in a classical way: copy to some folder and create an entry under the registry key <strong>Run</strong>. As there’s nothing really new from previous writeups, no code is shown.</p>
+
+<h3 id="copy">Copy</h3>
+
+<p>Copy occurs in function <strong>0x401883</strong>. The destination folder depends on a flag and on privileges the malware runs with. It can be the <strong>Windows</strong> directory (retrieved with a call to <strong>GetWindowsDirectoryA()</strong>), the <strong>System32</strong> directory (<strong>GetSystemDirectoryA()</strong>) or the <strong>%AppData%</strong> directory (retrieved from the registry key <strong>SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders</strong>).
+In any case, the copy is named <strong>vmx32to64.exe</strong> and the original file is deleted.
+One a side note, admin privileges were checked earlier with a call to <strong>IsNTAdmin()</strong> (see address <strong>0x401516</strong>).</p>
+
+<h3 id="persistence">Persistence</h3>
+
+<p>Inside function <strong>0x401715</strong>, the malware creates either:</p>
+<ul>
+  <li><strong>HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\VideoDriver</strong> key (if not admin)</li>
+  <li><strong>HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\VideoDriver</strong> key (if admin)</li>
+</ul>
+
+<p>The content of the key is the path of the malware copy.</p>
+
+<h3 id="threads-creation">Threads creation</h3>
+
+<p>Still inside function <strong>0x4017ba</strong>, we notice the malware can execute two calls to the api <strong>Createthread()</strong>. However I didn’t find where the start addresses where located.</p>
+
+<h2 id="network">Network: function 0x400437</h2>
+
+<p>Back from malware installation, we reach address <strong>0x4015f8</strong>:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">004015</span><span class="nf">F7</span>      <span class="nv">push</span>    <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">004015</span><span class="nf">F8</span>      <span class="nv">call</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">0EA3h</span><span class="p">]</span> <span class="c1">; 0x400437: network!</span>
+</code></pre></div></div>
+
+<p>Let’s dig into function <strong>0x400437</strong> \o/ 
+This function starts by creating a mutex named <strong>WinVMX32</strong> (and exits if it already exists); here again, no code shown because it’s always the same thing. It’s also here that <strong>ws2_32.dll</strong> imports are resolved (see <a href="#imports_customstructs">above</a>).</p>
+
+<h3 id="crypto">Crypto</h3>
+
+<p>Communications with the CnC are encrypted. At address <strong>0x40047a</strong> is a call to function <strong>0x400b5a</strong>:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">0040047</span><span class="nf">A</span>  <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_400b5a_Crypto_camellia256_set_key</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>Inside this function, we notice what looks like cryptographic constants:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400</span><span class="nf">B9B</span> <span class="nv">camellia_sigma</span>  <span class="nv">dd</span> <span class="mh">7F669EA0h</span><span class="p">,</span> <span class="mh">8B90CC3Bh</span><span class="p">,</span> <span class="mh">58E87AB6h</span><span class="p">,</span> <span class="mh">0B273AA4Ch</span><span class="p">,</span> <span class="mh">2F37EFC6h</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B9B</span>                 <span class="nv">dd</span> <span class="mh">0BE824FE9h</span><span class="p">,</span> <span class="mh">0A553FF54h</span><span class="p">,</span> <span class="mh">1C6FD3F1h</span><span class="p">,</span> <span class="mh">0FA27E510h</span><span class="p">,</span> <span class="mh">1D2D68DEh</span>
+<span class="nl">.data:</span><span class="err">00400</span><span class="nf">B9B</span>                 <span class="nv">dd</span> <span class="mh">0C28856B0h</span><span class="p">,</span> <span class="mh">0FDC1E6B3h</span>
+</code></pre></div></div>
+
+<p>After some wandering and googling, we find a <a href="https://github.com/hashcat/hashcat/blob/master/OpenCL/inc_cipher_camellia.cl">Github project</a> allowing us to link these with Camellia encryption (symmetric). I’ve never met this algorithm before, so I compared the sources publicly available to the disassembly and made some assumptions (Don’t hesitate to ping me if you disagree with my IDB):</p>
+<ul>
+  <li>Function <strong>0x400de0</strong> might be CamelliaDecrypt()</li>
+  <li>Function <strong>0x400cf4</strong> might be CamelliaEncrypt()</li>
+  <li>buffer1+0x96b-&gt;encryption/decryption key</li>
+</ul>
+
+<p>This is thin but enough to get a better understanding of the overall communication protocol.</p>
+
+<h3 id="winsock2-init">Winsock2 init</h3>
+
+<p>Initialization of winsock2 communication starts just after the resolution of network-related imports:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">0040050</span><span class="nf">C</span>      <span class="nv">lea</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">WSADATA</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400512</span>      <span class="nf">push</span>    <span class="nb">ecx</span>         <span class="c1">; WSADATA*</span>
+<span class="nl">.data:</span><span class="err">00400513</span>      <span class="nf">push</span>    <span class="mh">101h</span>
+<span class="nl">.data:</span><span class="err">00400518</span>      <span class="nf">call</span>    <span class="nb">eax</span>         <span class="c1">; WSAStartup</span>
+<span class="nl">.data:</span><span class="err">0040051</span><span class="nf">A</span>      <span class="nv">test</span>    <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">0040051</span><span class="nf">C</span>      <span class="nv">jnz</span>     <span class="nv">failed_winsock_init</span>
+</code></pre></div></div>
+
+<p>Then the domain <strong>www.practicalmalwareanalysis.com</strong> and port <strong>443</strong> are retrieved from buffer1:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.data:00400633      lea     edi, [ebp+malicious_domain]
+.data:00400639      push    edi             ; dest
+.data:0040063A      push    ecx             ; size or null
+.data:0040063B      lea     edi, [esi+BUFFER_1.domain_and_port]
+.data:00400641      push    edi             ; source
+.data:00400642      call    [esi+BUFFER_1.ptr_sub_400988_CopyData] ; 0x400988; returns port in ECX
+</code></pre></div></div>
+
+<p>A call to <strong>htons()</strong> is made to convert the little-endian port number to big-endian (“network byte order”):</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">0040064</span><span class="nf">E</span>      <span class="nv">push</span>    <span class="nb">ecx</span> <span class="c1">; 0x1bb = port 443</span>
+<span class="nl">.data:</span><span class="err">0040064</span><span class="nf">F</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.addr_htons</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>Following that, a socket is created:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">0040064</span><span class="nf">E</span>      <span class="nv">push</span>    <span class="nb">ecx</span>
+<span class="nl">.data:</span><span class="err">0040064</span><span class="nf">F</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.addr_htons</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400652</span>      <span class="nf">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">SOCKADDR.sin_port</span><span class="p">],</span> <span class="nb">ax</span>
+<span class="nl">.data:</span><span class="err">00400659</span>      <span class="nf">push</span>    <span class="mi">0</span>               <span class="c1">; no protocol specified</span>
+<span class="nl">.data:</span><span class="err">0040065</span><span class="nf">B</span>      <span class="nv">push</span>    <span class="nv">SOCK_STREAM</span>
+<span class="nl">.data:</span><span class="err">0040065</span><span class="nf">D</span>      <span class="nv">push</span>    <span class="nv">AF_INET</span>
+<span class="nl">.data:</span><span class="err">0040065</span><span class="nf">F</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.addr_socket</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400662</span>      <span class="nf">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">socket</span><span class="p">],</span> <span class="nb">eax</span> <span class="c1">; sd</span>
+</code></pre></div></div>
+
+<p>A call to <strong>gethostbyname()</strong> allows to get the IP address of the domain:</p>
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">0040067</span><span class="nf">D</span>                 <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">malicious_domain</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400683</span>                 <span class="nf">push</span>    <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">00400684</span>                 <span class="nf">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.addr_gethostbyname</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400687</span>                 <span class="nf">or</span>      <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">00400689</span>                 <span class="nf">jnz</span>     <span class="nv">short</span> <span class="nv">gethostbyname_success</span>
+<span class="err">[</span><span class="nf">...</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400690</span> <span class="nl">gethostbyname_success:</span>                  <span class="c1">; CODE XREF: Network+252↑j</span>
+<span class="nl">.data:</span><span class="err">00400690</span>                 <span class="nf">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="o">+</span><span class="mh">0Ch</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400693</span>                 <span class="nf">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400695</span>                 <span class="nf">mov</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">eax</span><span class="p">]</span>      <span class="c1">; CnC IP</span>
+</code></pre></div></div>
+
+<p>I didn’t follow all the pointer shenanigans, but in the end <strong>EAX = 0x184E00C0</strong>:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Byte1</th>
+      <th>Byte2</th>
+      <th>Byte3</th>
+      <th>Byte4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0x18</td>
+      <td>0x4E</td>
+      <td>0x00</td>
+      <td>0xC0</td>
+    </tr>
+    <tr>
+      <td>24</td>
+      <td>78</td>
+      <td>00</td>
+      <td>192</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>=&gt; 192.0.78.24 = IP of the domain.</p>
+
+<p>Once the malware get the IP to contact, it connects the socket:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">004006</span><span class="nf">AA</span>      <span class="nv">push</span>    <span class="mh">10h</span>                 <span class="c1">; sizeof(sockaddr)</span>
+<span class="nl">.data:</span><span class="err">004006</span><span class="nf">AC</span>      <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mh">1A8h</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004006</span><span class="nf">B2</span>      <span class="nv">push</span>    <span class="nb">eax</span>                 <span class="c1">; sockaddr</span>
+<span class="nl">.data:</span><span class="err">004006</span><span class="nf">B3</span>      <span class="nv">push</span>    <span class="kt">dword</span> <span class="nv">ptr</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span>   <span class="c1">; socket</span>
+<span class="nl">.data:</span><span class="err">004006</span><span class="nf">B6</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.addr_connect</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004006</span><span class="nf">B9</span>      <span class="nv">or</span>      <span class="nb">eax</span><span class="p">,</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">004006</span><span class="nf">BB</span>      <span class="nv">jnz</span>     <span class="nb">cl</span><span class="nv">ose_socket_and_sleep</span>
+</code></pre></div></div>
+
+<p>If the connection is successful, data are sent to the server.</p>
+
+<h3 id="sending-and-receiving-data">Sending and receiving data</h3>
+
+<p>Data to send were generated early during malware execution (see address <strong>0x4015A5</strong>), but it’s just randomly generated data so I skipped it at first. These data are transformed inside function <strong>0x4010dc</strong> and put inside a buffer pointed by EDI:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400851</span> <span class="nl">send_data:</span>                              <span class="c1">; CODE XREF: Network+29B↑j</span>
+<span class="nl">.data:</span><span class="err">00400851</span>                                         <span class="c1">; Network+360↑j ...</span>
+<span class="nl">.data:</span><span class="err">00400851</span>      <span class="nf">lea</span>     <span class="nb">edi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">data_to_send</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400857</span>      <span class="nf">xor</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="nb">ecx</span>
+<span class="nl">.data:</span><span class="err">00400859</span>
+<span class="nl">.data:</span><span class="err">00400859</span> <span class="nl">process_data_to_send:</span>
+<span class="nl">.data:</span><span class="err">00400859</span>      <span class="nf">push</span>    <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">0040085</span><span class="nf">A</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_4010dc_CryptoRandom2</span><span class="p">]</span> <span class="c1">; 0x4010dc</span>
+<span class="nl">.data:</span><span class="err">00400860</span>      <span class="nf">mov</span>     <span class="p">[</span><span class="nb">ecx</span><span class="o">+</span><span class="nb">edi</span><span class="p">],</span> <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">00400863</span>      <span class="nf">mov</span>     <span class="p">[</span><span class="nb">ecx</span><span class="o">+</span><span class="nb">edi</span><span class="o">+</span><span class="mi">4</span><span class="p">],</span> <span class="nb">edx</span>
+<span class="nl">.data:</span><span class="err">00400867</span>      <span class="nf">add</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">8</span>
+<span class="nl">.data:</span><span class="err">0040086</span><span class="nf">A</span>      <span class="nv">cmp</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mh">100h</span>
+<span class="nl">.data:</span><span class="err">00400870</span>      <span class="nf">jnz</span>     <span class="nv">short</span> <span class="nv">process_data_to_send</span>
+</code></pre></div></div>
+
+<p>Following that, data are finally sent:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400872</span>      <span class="nf">push</span>    <span class="mh">100h</span>            <span class="c1">; size of data</span>
+<span class="nl">.data:</span><span class="err">00400877</span>      <span class="nf">push</span>    <span class="nb">edi</span>             <span class="c1">; random data</span>
+<span class="nl">.data:</span><span class="err">00400878</span>      <span class="nf">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">socket</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">0040087</span><span class="nf">B</span>      <span class="nv">push</span>    <span class="mi">1</span>               <span class="c1">; flag 1 = send (0 = recv)</span>
+<span class="nl">.data:</span><span class="err">0040087</span><span class="nf">D</span>      <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; base buffer 1</span>
+<span class="nl">.data:</span><span class="err">0040087</span><span class="nf">E</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_4009d3_NetworkSendOrRecv</span><span class="p">]</span> <span class="c1">; 4009d3</span>
+</code></pre></div></div>
+
+<p>Next, the malware</p>
+<ol>
+  <li>Use <strong>CamelliaEncrypt()</strong> on the data already sent</li>
+  <li>Receive data from the server and compare both</li>
+</ol>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; encrypt</span>
+<span class="nl">.data:</span><span class="err">00400886</span> <span class="nl">encrypt_dafuck:</span>
+<span class="nl">.data:</span><span class="err">00400886</span>      <span class="nf">push</span>    <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">00400887</span>      <span class="nf">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.camellia</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">0040088</span><span class="nf">D</span>      <span class="nv">push</span>    <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">0040088</span><span class="nf">E</span>      <span class="nv">push</span>    <span class="nb">edi</span>
+<span class="nl">.data:</span><span class="err">0040088</span><span class="nf">F</span>      <span class="nv">push</span>    <span class="nb">edi</span>             <span class="c1">; encrypt the random data</span>
+<span class="nl">.data:</span><span class="err">00400890</span>      <span class="nf">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_400cf4_CamelliaEncrypt</span><span class="p">]</span> <span class="c1">; 0x400cf4</span>
+<span class="nl">.data:</span><span class="err">00400896</span>      <span class="nf">add</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mh">10h</span>
+<span class="nl">.data:</span><span class="err">00400899</span>      <span class="nf">add</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mi">1</span>
+<span class="nl">.data:</span><span class="err">0040089</span><span class="nf">C</span>      <span class="nv">cmp</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mh">10h</span>
+<span class="nl">.data:</span><span class="err">0040089</span><span class="nf">F</span>      <span class="nv">jnz</span>     <span class="nv">short</span> <span class="nv">encrypt_dafuck</span>
+
+<span class="c1">; receive</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">A1</span>      <span class="nv">push</span>    <span class="mh">100h</span>        <span class="c1">; size of buffer</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">A6</span>      <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">encrypted_data_recv</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">AC</span>      <span class="nv">push</span>    <span class="nb">eax</span>         <span class="c1">; data to receive</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">AD</span>      <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">socket</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">B0</span>      <span class="nv">push</span>    <span class="mi">0</span>           <span class="c1">; flag 0 = recv</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">B2</span>      <span class="nv">push</span>    <span class="nb">esi</span>         <span class="c1">; base buffer 1</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">B3</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_4009d3_NetworkSendOrRecv</span><span class="p">]</span> <span class="c1">; 4009d3</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">B9</span>      <span class="nv">push</span>    <span class="nb">esi</span>
+
+<span class="c1">; compare</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">BA</span>      <span class="nb">cl</span><span class="nv">d</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">BB</span>      <span class="nv">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mh">40h</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">C0</span>      <span class="nv">lea</span>     <span class="nb">esi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">data_to_send</span><span class="p">]</span> <span class="c1">; now encrypted</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">C6</span>      <span class="nv">lea</span>     <span class="nb">edi</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">encrypted_data_recv</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">CC</span>      <span class="nv">repe</span> <span class="nv">cmpsd</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">CE</span>      <span class="nv">jz</span>      <span class="nv">short</span> <span class="nv">data_match</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">D0</span>      <span class="nv">pop</span>     <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">D1</span>      <span class="nv">mov</span>     <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">sleep_time</span><span class="p">],</span> <span class="mh">7530h</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="kd">DB</span>      <span class="nv">jmp</span>     <span class="nv">short</span> <span class="nb">cl</span><span class="nv">ose_socket_and_sleep</span>
+</code></pre></div></div>
+
+<p>During the dynamic analysis, the recv buffer stayed desperately empty. However, I speculate the server should answer with the data it received from the <strong>send()</strong> and encrypted on its side. If the server answer match the data encrypted on the client side, it means both are in possession of the encryption key.</p>
+
+<p>If the data match, the malware receive 4 more bytes from the server:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">004008</span><span class="nf">DE</span>      <span class="nv">push</span>    <span class="mi">4</span>   <span class="c1">; size</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">E0</span>      <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">WSADATA.lpVendorInfo</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">E3</span>      <span class="nv">push</span>    <span class="nb">eax</span>             <span class="c1">; output to recv 4 bytes</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">E4</span>      <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">socket</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">E7</span>      <span class="nv">push</span>    <span class="mi">0</span>               <span class="c1">; 0 = recv</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">E9</span>      <span class="nv">push</span>    <span class="nb">esi</span>             <span class="c1">; base buffer 1</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">EA</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_4009d3_NetworkSendOrRecv</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>It appears these 4 bytes are a size, and are used in a following call to <strong>VirtualAlloc()</strong>:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">004008</span><span class="nf">F4</span>      <span class="nv">push</span>    <span class="nv">PAGE_EXECUTE_READWRITE</span>   <span class="c1">; RWX FTW</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">F6</span>      <span class="nv">push</span>    <span class="nv">MEM_COMMIT</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">FB</span>      <span class="nv">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">WSADATA.lpVendorInfo</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span> <span class="c1">; data received=size to alloc</span>
+<span class="nl">.data:</span><span class="err">004008</span><span class="nf">FE</span>      <span class="nv">push</span>    <span class="mi">0</span>
+<span class="nl">.data:</span><span class="err">00400900</span>      <span class="nf">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.addr_VirtualAlloc</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400903</span>      <span class="nf">mov</span>     <span class="nb">edi</span><span class="p">,</span> <span class="nb">eax</span>    <span class="c1">; future payload</span>
+</code></pre></div></div>
+
+<p>Without surprise now, the allocated buffer is used to downlaod additional data:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400905</span>      <span class="nf">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">WSADATA.lpVendorInfo</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span> <span class="c1">; size of download</span>
+<span class="nl">.data:</span><span class="err">00400908</span>      <span class="nf">push</span>    <span class="nb">eax</span>             <span class="c1">; download data to heap</span>
+<span class="nl">.data:</span><span class="err">00400909</span>      <span class="nf">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">socket</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">0040090</span><span class="nf">C</span>      <span class="nv">push</span>    <span class="mi">0</span>                <span class="c1">; recv</span>
+<span class="nl">.data:</span><span class="err">0040090</span><span class="nf">E</span>      <span class="nv">push</span>    <span class="nb">esi</span>              <span class="c1">; base buffer 1</span>
+<span class="nl">.data:</span><span class="err">0040090</span><span class="nf">F</span>      <span class="nv">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_4009d3_NetworkSendOrRecv</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>Downloaded data are decrypted with <strong>CamelliaDecrypt()</strong>:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400926</span>      <span class="nf">push</span>    <span class="nb">edi</span>     <span class="c1">; save</span>
+<span class="nl">.data:</span><span class="err">00400927</span>      <span class="nf">mov</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">WSADATA.lpVendorInfo</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span> <span class="c1">; payload size</span>
+<span class="nl">.data:</span><span class="err">0040092</span><span class="nf">A</span> <span class="nv">loop_decrypt</span><span class="p">:</span>
+<span class="nl">.data:</span><span class="err">0040092</span><span class="nf">A</span>      <span class="nv">push</span>    <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">0040092</span><span class="nf">B</span>      <span class="nv">lea</span>     <span class="nb">eax</span><span class="p">,</span> <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.camellia</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400931</span>      <span class="nf">push</span>    <span class="nb">eax</span>
+<span class="nl">.data:</span><span class="err">00400932</span>      <span class="nf">push</span>    <span class="nb">edi</span>
+<span class="nl">.data:</span><span class="err">00400933</span>      <span class="nf">push</span>    <span class="nb">edi</span>     <span class="c1">; downloaded payload</span>
+<span class="nl">.data:</span><span class="err">00400934</span>      <span class="nf">call</span>    <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.ptr_sub_400de0_CamelliaDecrypt</span><span class="p">]</span> <span class="c1">; 0x400de0</span>
+<span class="nl">.data:</span><span class="err">0040093</span><span class="nf">A</span>      <span class="nv">add</span>     <span class="nb">edi</span><span class="p">,</span> <span class="mh">10h</span>
+<span class="nl">.data:</span><span class="err">0040093</span><span class="nf">D</span>      <span class="nv">sub</span>     <span class="nb">ecx</span><span class="p">,</span> <span class="mh">10h</span>
+<span class="nl">.data:</span><span class="err">00400940</span>      <span class="nf">jnz</span>     <span class="nv">short</span> <span class="nv">loop_decrypt</span>
+<span class="nl">.data:</span><span class="err">00400942</span>      <span class="nf">pop</span>     <span class="nb">edi</span>     <span class="c1">; restore</span>
+</code></pre></div></div>
+
+<p>And the payload is executed:</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">.data:</span><span class="err">00400943</span>      <span class="nf">push</span>    <span class="nb">edi</span>
+<span class="nl">.data:</span><span class="err">00400944</span>      <span class="nf">push</span>    <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="nv">socket</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">00400947</span>      <span class="nf">pop</span>     <span class="p">[</span><span class="nb">esi</span><span class="o">+</span><span class="nv">BUFFER_1.socket</span><span class="p">]</span>
+<span class="nl">.data:</span><span class="err">0040094</span><span class="nf">D</span>      <span class="nv">push</span>    <span class="nb">esi</span>
+<span class="nl">.data:</span><span class="err">0040094</span><span class="nf">E</span>      <span class="nv">call</span>    <span class="nb">edi</span>             <span class="c1">; call payload</span>
+<span class="nl">.data:</span><span class="err">00400950</span>      <span class="nf">pop</span>     <span class="nb">edi</span>
+</code></pre></div></div>
+
+<p>It’s a bit frustrating to get empty answers from the server, but “c’est la vie”.</p>
+
+<h2 id="end">Closing words</h2>
+
+<p>Here we have a 7 KB motherfucker that gave a bad time to IDA functions recognition. I didn’t went into all the magic flags used by the network function, mostly because I’m lazy. Also, some calls stayed unresolved and some resolved API weren’t called (I’m thinking about process injection, hooking, and keylogging features). I see two explanations:</p>
+<ul>
+  <li>I missed something</li>
+  <li>This is a somewhat disarmed sample</li>
+</ul>
+
+<p>Hint me if you know !</p>
+
+<hr />
+<p>end of file</p>
+
+
+
+    </main><footer>
+  Original theme by <a href=https://github.com/b2a3e8/jekyll-theme-console>b2a3e8</a>
+</footer>
+</div>
+  </body>
+</html>
