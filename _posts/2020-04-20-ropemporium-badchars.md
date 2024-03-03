@@ -13,7 +13,7 @@ categories: [series, rop_emporium]
 
 > "An arbitrary write challenge with a twist; certain input characters get mangled before finding their way onto the stack. [...]"
 
-In this challenge, a function checks our input and if it contains some "special" characters, they are replaced by the byte `0xEB`. Otherwise, it is similar to the challenge [write4](/series/rop_emporium/ropemporium-write4/).
+In this challenge, a function checks our input and if it contains some "special" characters, they are replaced by the byte `0xEB`. Otherwise, it is similar to the challenge [write4](/posts/ropemporium-write4/).
 
 ## Function pwnme() 
 
