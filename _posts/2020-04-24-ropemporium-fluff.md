@@ -18,7 +18,7 @@ This one has funky `xor` gadgets, but it's still possible to write where we want
 ## #Fails
 Dear diary,
 today I had a lot of fun but also experimented some frustration. I tried several things that didn' work, but in the end I got the flag. It stated with an idea like this: 
-because `_fgets()` returns a pointer to the input buffer, I tried to write `/bin/sh` on the stack and then to overwrite the `.got.plt` entry of `_memset()` with the address of `_system()`, and finally to return to `mov rdi, rax; call _memset()`. I seemed to work (at least according to **ps**, and **gdb** indicated the creation of a child process), but I was unable to use this new shell. I tried a second time, replacing `"/bin/sh"` by `"/bin/cat flag.txt"`, but was unable to get the output. In addition, overwritting the `.got.plt` entry of `_memset()` with the one of `_system()` generated a Bus error. I still have to figure out why things went this way, but in the end I opted for an easier solution which is basically the [write4](/series/rop_emporium/ropemporium-write4) challenge with `xor`.
+because `_fgets()` returns a pointer to the input buffer, I tried to write `/bin/sh` on the stack and then to overwrite the `.got.plt` entry of `_memset()` with the address of `_system()`, and finally to return to `mov rdi, rax; call _memset()`. I seemed to work (at least according to **ps**, and **gdb** indicated the creation of a child process), but I was unable to use this new shell. I tried a second time, replacing `"/bin/sh"` by `"/bin/cat flag.txt"`, but was unable to get the output. In addition, overwritting the `.got.plt` entry of `_memset()` with the one of `_system()` generated a Bus error. I still have to figure out why things went this way, but in the end I opted for an easier solution which is basically the [write4](/posts/ropemporium-write4) challenge with `xor`.
 Also, this is the first challenge for which returning to instruction `call system` majestically failed to execute the commandline pointed by `edi`; the fix was to return to `plt.system`.
 
 ## Function pwnme()
@@ -69,7 +69,7 @@ Okay, `mov qword ptr [r10], r11` is cool if:
 1. We can control `r10`;
 2. we can control `r11`. 
 
-But before that, note the `xor [r10], r12b`: it writes to memory, but if we set `r12b` to 0 (thanks to the `pop r12`), the data at `[r10]` won't change. This also means we could chain the `pop/xor/ret` to decode or restore altered data, similarly to the [badchars](/series/rop_emporium/ropemporium-badchars) challenge.  
+But before that, note the `xor [r10], r12b`: it writes to memory, but if we set `r12b` to 0 (thanks to the `pop r12`), the data at `[r10]` won't change. This also means we could chain the `pop/xor/ret` to decode or restore altered data, similarly to the [badchars](/posts/ropemporium-badchars) challenge.  
 Now, let's look for `r10`:
 ```bash
 ropper --search "% r10" -f ../challs/fluff
