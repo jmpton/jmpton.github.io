@@ -63,7 +63,6 @@ ropper --search "mov [" -f ../challs/write4
 0x0000000000400821: mov dword ptr [rsi], edi; ret; 
 0x0000000000400820: mov qword ptr [r14], r15; ret; 
 ```
-[]()
 In order to use the first gadget, we have to control the values of `rsi` and `edi`:
 ```bash
 ropper --search "??? ?di" -f ../challs/write4
