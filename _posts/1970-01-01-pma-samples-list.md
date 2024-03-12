@@ -18,4 +18,9 @@ This page centralizes the current status of my writeups about samples from the b
 |84882c9d43e23d63b82004fae74ebb61|Lab03-02.dll|[read](/posts/pma-Lab03-02)||
 |e2bf42217a67e46433da8b6f4507219e|Lab03-03.exe|[read](/posts/pma-Lab03-03)||
 |b94af4a4d4af6eac81fc135abda1c40c|Lab03-04.exe|[read](/posts/pma-Lab03-04)||
+|1a9fd80174aafecd9a52fd908cb82637|Lab05-01.dll|[NONE](#)|work in progress|
+|6abde2f83015f066385d27cff6143c44|Lab06-01.exe|NONE|Subset of Lab06-02.exe; see Lab06-04 writeup|
+|c0b54534e188e1392f28d17faff3d454|Lab06-02.exe|NONE|Subset of Lab06-03.exe; see Lab06-04 writeup|
+|3f8e2b945deba235fa4888682bd0d640|Lab06-03.exe|NONE|Subset of Lab06-04.exe; see dedicated writeup|
+|21be74dfafdacaaab1c8d836e2186a69|Lab06-04.exe|[read](/posts/pma-Lab06-04)|All Lab06-* in one|
 
