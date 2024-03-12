@@ -16,3 +16,6 @@ This page centralizes the current status of my writeups about samples from the b
 |625ac05fd47adc3c63700c3b30de79ab|Lab01-04.exe|[read](/posts/pma-Lab01-04)||
 |d537acb8f56a1ce206bc35cf8ff959c0|Lab03-01.exe|[read](/posts/pma-Lab03-01)||
 |84882c9d43e23d63b82004fae74ebb61|Lab03-02.dll|[read](/posts/pma-Lab03-02)||
+|e2bf42217a67e46433da8b6f4507219e|Lab03-03.exe|[read](/posts/pma-Lab03-03)||
+|b94af4a4d4af6eac81fc135abda1c40c|Lab03-04.exe|[read](/posts/pma-Lab03-04)||
+
