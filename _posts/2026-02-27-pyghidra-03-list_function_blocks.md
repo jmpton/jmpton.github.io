@@ -22,7 +22,6 @@ Keywords to dig in the doc:
 
 ```py
 # List basic blocks of a randomly selected function
-# List basic blocks of a randomly selected function
 #@author silma
 #@category _MyScripts
 #@keybinding 
