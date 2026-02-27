@@ -13,8 +13,11 @@ tags: [ghidra, pyghidra, python]
 Build the list of functions of a program and disassemble a randomly choosen one. To disassemble the function of your choice, set `USE_RANDOM` to `False` and `INDEX` to the corresponding value in the list.
 
 A few keywords to dig in the doc:
-* Interfaces: `FunctionManager`, `Listing`
-* Objects: `Function`, `Address`, `CodeUnit`
+* `FunctionManager`
+* `Listing`
+* `Function`
+* `Address`
+* `CodeUnit`
 
 # Code
 
