@@ -1,5 +1,5 @@
 ---
-title: PyGhidra Configuration
+title: PyGhidra - Configuration
 category: [braindump, pyghidra]
 tags: [ghidra, pyghidra, python]
 ---
@@ -31,7 +31,7 @@ tags: [ghidra, pyghidra, python]
 
 A script header contains some metadata:
 
-```
+```sh
 ┌[~/dev/ghidra_scripts/pyghidra/v12.0.3]
 └╼[silma@myrtille:$ cat helloworld.py 
 
@@ -52,3 +52,5 @@ print("Hello from PyGhidra!")
     * Select the category,  then the script (right pane), and Clic on the '_Run Script_' button
 * If everything went well, the output should be visible in the '_Console - Scripting_' window
 
+---
+EOF
